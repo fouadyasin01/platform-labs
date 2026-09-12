@@ -139,6 +139,14 @@ setup_backup() {
     info "Backup setup completed"
 }
 
+setup_logrotate() {
+    info "Starting log rotation setup"
+
+    "${SCRIPT_DIR}/scripts/setup_logrotate.sh"
+
+    info "Log rotation setup completed"
+}
+
 main() {
     require_root
 
@@ -158,6 +166,7 @@ main() {
     setup_fail2ban
     verify_dns
     setup_monitoring
+    setup_logrotate
     setup_backup
 
     info "Provisioning framework initialized"
