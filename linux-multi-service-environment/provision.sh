@@ -70,6 +70,15 @@ setup_backend() {
     info "Backend setup completed"
 }
 
+
+setup_systemd() {
+    info "Starting systemd service setup"
+
+    "${SCRIPT_DIR}/scripts/setup_systemd.sh"
+
+    info "systemd service setup completed"
+}
+
 main() {
     require_root
 
@@ -82,6 +91,7 @@ main() {
     install_dependencies
     setup_app_user
     setup_backend
+    setup_systemd
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
