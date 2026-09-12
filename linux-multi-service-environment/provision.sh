@@ -122,6 +122,14 @@ verify_dns() {
     info "DNS verification completed"
 }
 
+setup_monitoring() {
+    info "Starting monitoring setup"
+
+    "${SCRIPT_DIR}/scripts/setup_monitoring.sh"
+
+    info "Monitoring setup completed"
+}
+
 main() {
     require_root
 
@@ -140,6 +148,7 @@ main() {
     setup_firewall
     setup_fail2ban
     verify_dns
+    setup_monitoring
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
