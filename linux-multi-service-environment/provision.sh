@@ -54,6 +54,14 @@ install_dependencies() {
     info "Dependency installation completed"
 }
 
+setup_app_user() {
+    info "Starting application user setup"
+
+    "${SCRIPT_DIR}/scripts/setup_app_user.sh"
+
+    info "Application user setup completed"
+}
+
 main() {
     require_root
 
@@ -64,6 +72,7 @@ main() {
     validate_environment
     validate_os
     install_dependencies
+    setup_app_user
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
