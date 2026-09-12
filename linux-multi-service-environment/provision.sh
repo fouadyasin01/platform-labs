@@ -113,6 +113,15 @@ setup_fail2ban() {
     info "fail2ban setup completed"
 }
 
+
+verify_dns() {
+    info "Starting DNS verification"
+
+    "${SCRIPT_DIR}/scripts/verify_dns.sh"
+
+    info "DNS verification completed"
+}
+
 main() {
     require_root
 
@@ -130,6 +139,7 @@ main() {
     setup_nginx
     setup_firewall
     setup_fail2ban
+    verify_dns
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
