@@ -105,6 +105,14 @@ setup_firewall() {
 }
 
 
+setup_fail2ban() {
+    info "Starting fail2ban setup"
+
+    "${SCRIPT_DIR}/scripts/setup_fail2ban.sh"
+
+    info "fail2ban setup completed"
+}
+
 main() {
     require_root
 
@@ -121,6 +129,7 @@ main() {
     setup_tls
     setup_nginx
     setup_firewall
+    setup_fail2ban
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
