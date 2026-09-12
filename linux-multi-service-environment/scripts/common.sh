@@ -28,3 +28,12 @@ error() {
     log "ERROR" "$@"
 }
 
+
+require_command() {
+    local command_name="$1"
+
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+        error "Required command not found: $command_name"
+        exit 1
+    fi
+}

@@ -13,12 +13,26 @@ require_root() {
     fi
 }
 
+validate_environment() {
+    info "Validating environment"
+
+    require_command "bash"
+    require_command "systemctl"
+    require_command "ip"
+    require_command "ss"
+
+    info "Environment validation completed"
+}
+
 main() {
     require_root
 
     touch "$LOG_FILE"
 
     info "Starting Linux multi-service environment provisioning"
+
+    validate_environment
+
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
 }
