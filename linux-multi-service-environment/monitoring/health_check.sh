@@ -2,8 +2,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/../scripts/common.sh"
+
 HEALTH_URL="https://127.0.0.1/health"
-LOG_FILE="/var/log/multiapp/health-check.log"
+HEALTH_LOG="${APP_LOG_DIR}/health-check.log"
 
 check_health() {
     local timestamp
@@ -11,9 +15,9 @@ check_health() {
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
 
     if curl -k --fail --silent --show-error "${HEALTH_URL}" >/dev/null; then
-        echo "${timestamp} [INFO] Backend health check passed" >> "${LOG_FILE}"
+        echo "${timestamp} [INFO] Backend health check passed" >> "${HEALTH_LOG}"
     else
-        echo "${timestamp} [ERROR] Backend health check failed" >> "${LOG_FILE}"
+        echo "${timestamp} [ERROR] Backend health check failed" >> "${HEALTH_LOG}"
         return 1
     fi
 }

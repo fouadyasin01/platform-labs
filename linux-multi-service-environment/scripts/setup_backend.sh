@@ -7,8 +7,6 @@ PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
 source "${SCRIPT_DIR}/common.sh"
 
-APP_USER="multiapp"
-APP_DIR="/opt/multiapp"
 VENV_DIR="${APP_DIR}/venv"
 
 setup_backend() {

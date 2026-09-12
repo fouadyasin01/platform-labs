@@ -4,6 +4,13 @@ set -euo pipefail
 
 LOG_FILE="/var/log/platform-provision.log"
 
+APP_USER="multiapp"
+APP_GROUP="multiapp"
+APP_DIR="/opt/multiapp"
+APP_LOG_DIR="/var/log/multiapp"
+APP_PORT="3000"
+
+
 log() {
     local level="$1"
     shift

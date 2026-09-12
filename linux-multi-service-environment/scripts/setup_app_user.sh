@@ -6,8 +6,6 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 source "${SCRIPT_DIR}/common.sh"
 
-APP_USER="multiapp"
-APP_GROUP="multiapp"
 
 create_app_user() {
     info "Creating application user"

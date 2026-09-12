@@ -7,17 +7,17 @@ PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
 source "${SCRIPT_DIR}/common.sh"
 
-LOG_DIR="/var/log/multiapp"
+
 LOGROTATE_CONFIG="/etc/logrotate.d/multiapp"
 
 setup_logrotate() {
     info "Configuring application log rotation"
 
-    mkdir -p "${LOG_DIR}"
+    mkdir -p "${APP_LOG_DIR}"
 
-    touch "${LOG_DIR}/app.log"
+    touch "${APP_LOG_DIR}/app.log"
 
-    chown -R multiapp:multiapp "${LOG_DIR}"
+    chown -R "${APP_USER}:${APP_GROUP}" "${APP_LOG_DIR}"
 
     cp "${PROJECT_DIR}/logrotate/multiapp" "${LOGROTATE_CONFIG}"
 
