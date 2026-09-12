@@ -62,6 +62,14 @@ setup_app_user() {
     info "Application user setup completed"
 }
 
+setup_backend() {
+    info "Starting backend setup"
+
+    "${SCRIPT_DIR}/scripts/setup_backend.sh"
+
+    info "Backend setup completed"
+}
+
 main() {
     require_root
 
@@ -73,6 +81,7 @@ main() {
     validate_os
     install_dependencies
     setup_app_user
+    setup_backend
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
