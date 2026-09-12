@@ -130,6 +130,15 @@ setup_monitoring() {
     info "Monitoring setup completed"
 }
 
+
+setup_backup() {
+    info "Starting backup setup"
+
+    "${SCRIPT_DIR}/scripts/setup_backup.sh"
+
+    info "Backup setup completed"
+}
+
 main() {
     require_root
 
@@ -149,6 +158,7 @@ main() {
     setup_fail2ban
     verify_dns
     setup_monitoring
+    setup_backup
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
