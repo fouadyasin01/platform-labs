@@ -96,6 +96,15 @@ setup_nginx() {
 }
 
 
+setup_firewall() {
+    info "Starting firewall setup"
+
+    "${SCRIPT_DIR}/scripts/setup_firewall.sh"
+
+    info "Firewall setup completed"
+}
+
+
 main() {
     require_root
 
@@ -111,6 +120,7 @@ main() {
     setup_systemd
     setup_tls
     setup_nginx
+    setup_firewall
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
