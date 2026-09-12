@@ -169,8 +169,9 @@ main() {
     setup_logrotate
     setup_backup
 
-    info "Provisioning framework initialized"
-    info "Provisioning completed successfully"
+    info "Linux multi-service environment provisioning completed successfully"
+
+  
 }
 
 main "$@"
