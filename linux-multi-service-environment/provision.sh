@@ -79,6 +79,23 @@ setup_systemd() {
     info "systemd service setup completed"
 }
 
+setup_tls() {
+    info "Starting TLS setup"
+
+    "${SCRIPT_DIR}/scripts/setup_tls.sh"
+
+    info "TLS setup completed"
+}
+
+setup_nginx() {
+    info "Starting Nginx setup"
+
+    "${SCRIPT_DIR}/scripts/setup_nginx.sh"
+
+    info "Nginx setup completed"
+}
+
+
 main() {
     require_root
 
@@ -92,6 +109,8 @@ main() {
     setup_app_user
     setup_backend
     setup_systemd
+    setup_tls
+    setup_nginx
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
