@@ -24,7 +24,6 @@ validate_environment() {
     info "Environment validation completed"
 }
 
-
 validate_os() {
     info "Validating operating system"
 
@@ -47,6 +46,14 @@ validate_os() {
     info "Package manager: apt"
 }
 
+install_dependencies() {
+    info "Starting dependency installation"
+
+    "${SCRIPT_DIR}/scripts/install_dependencies.sh"
+
+    info "Dependency installation completed"
+}
+
 main() {
     require_root
 
@@ -56,6 +63,7 @@ main() {
 
     validate_environment
     validate_os
+    install_dependencies
 
     info "Provisioning framework initialized"
     info "Provisioning completed successfully"
