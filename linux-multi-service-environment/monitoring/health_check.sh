@@ -2,9 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-
-source "${SCRIPT_DIR}/../scripts/common.sh"
+APP_LOG_DIR="/var/log/multiapp"
 
 HEALTH_URL="https://127.0.0.1/health"
 HEALTH_LOG="${APP_LOG_DIR}/health-check.log"

@@ -18,7 +18,7 @@ setup_monitoring() {
     chmod 755 "${MONITORING_SCRIPT}"
 
     cat > "${CRON_FILE}" <<EOF
-*/5 * * * * root ${MONITORING_SCRIPT}
+* * * * * root ${MONITORING_SCRIPT}
 EOF
 
     chmod 644 "${CRON_FILE}"
