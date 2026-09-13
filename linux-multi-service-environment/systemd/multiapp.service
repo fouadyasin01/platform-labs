@@ -1,0 +1,15 @@
+[Unit]
+Description=Multi-Service Environment Backend
+After=network.target
+
+[Service]
+Type=simple
+User=multiapp
+Group=multiapp
+WorkingDirectory=/opt/multiapp
+ExecStart=/opt/multiapp/venv/bin/python /opt/multiapp/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
