@@ -11,12 +11,14 @@ DNS_HOST="${DNS_HOST:-localhost}"
 verify_dns() {
     info "Verifying DNS resolution for ${DNS_HOST}"
 
-    if getent hosts "${DNS_HOST}" >/dev/null 2>&1; then
-        info "DNS resolution successful: ${DNS_HOST}"
-    else
+    local resolved_ip
+
+    if ! resolved_ip=$(getent hosts "${DNS_HOST}" | awk '{print $1}' | head -n1); then
         error "DNS resolution failed: ${DNS_HOST}"
         exit 1
     fi
+
+    info "DNS resolution successful: ${DNS_HOST} -> ${resolved_ip}"
 }
 
 verify_dns
