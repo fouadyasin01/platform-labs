@@ -2,13 +2,15 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-
-source "${SCRIPT_DIR}/common.sh"
-
+APP_DIR="/opt/multiapp"
 BACKUP_DIR="/var/backups/multiapp"
 TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
 BACKUP_FILE="${BACKUP_DIR}/multiapp-${TIMESTAMP}.tar.gz"
+
+
+info() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] $*"
+}
 
 backup_app() {
     info "Starting application backup"
