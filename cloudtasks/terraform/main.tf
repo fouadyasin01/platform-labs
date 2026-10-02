@@ -599,3 +599,95 @@ resource "aws_lb_listener" "http" {
     target_group_arn = aws_lb_target_group.api.arn
   }
 }
+
+
+# ============================================================
+# ECS API TASK
+# ============================================================
+
+resource "aws_ecs_task_definition" "api" {
+  family = "cloudtasks-api"
+
+  network_mode             = "bridge"
+  requires_compatibilities = ["EC2"]
+
+  cpu    = "256"
+  memory = "512"
+
+  execution_role_arn = aws_iam_role.ecs_task_execution.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "cloudtasks-api"
+      image     = "vanbasten01/cloudtasks-api:1.1"
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = 3000
+          hostPort      = 3000
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "PORT"
+          value = "3000"
+        },
+        {
+          name  = "DB_HOST"
+          value = aws_db_instance.postgres.address
+        },
+        {
+          name  = "DB_PORT"
+          value = "5432"
+        },
+        {
+          name  = "DB_NAME"
+          value = "cloudtasks"
+        },
+        {
+          name  = "DB_USER"
+          value = "cloudtasks"
+        },
+        {
+          name  = "DB_PASSWORD"
+          value = var.db_password
+        }
+      ]
+    }
+  ])
+
+  tags = local.common_tags
+}
+
+# ============================================================
+# ECS SERVICE
+# ============================================================
+
+resource "aws_ecs_service" "api" {
+  name            = "cloudtasks-api"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.api.arn
+
+  desired_count = 2
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.main.name
+    weight            = 1
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api.arn
+    container_name   = "cloudtasks-api"
+    container_port   = 3000
+  }
+
+  depends_on = [
+    aws_lb_listener.http,
+    aws_ecs_cluster_capacity_providers.main
+  ]
+
+  tags = local.common_tags
+}
