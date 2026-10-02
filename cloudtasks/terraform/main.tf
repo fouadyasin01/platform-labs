@@ -283,3 +283,87 @@ resource "aws_db_instance" "postgres" {
     Name = "cloudtasks-postgres"
   })
 }
+
+
+# ============================================================
+# ECS CLUSTER
+# ============================================================
+
+resource "aws_ecs_cluster" "main" {
+  name = "cloudtasks"
+
+  tags = merge(local.common_tags, {
+    Name = "cloudtasks-ecs"
+  })
+}
+
+# ============================================================
+# ECS IAM
+# ============================================================
+
+resource "aws_iam_role" "ecs_instance" {
+  name = "cloudtasks-ecs-instance-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_instance" {
+  role       = aws_iam_role.ecs_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs" {
+  name = "cloudtasks-ecs-instance-profile"
+  role = aws_iam_role.ecs_instance.name
+}
+
+resource "aws_iam_role" "ecs_task_execution" {
+  name = "cloudtasks-ecs-task-execution-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
+  role       = aws_iam_role.ecs_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# ============================================================
+# ECS OPTIMIZED AMI
+# ============================================================
+
+data "aws_ssm_parameter" "ecs_ami" {
+  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
+}
