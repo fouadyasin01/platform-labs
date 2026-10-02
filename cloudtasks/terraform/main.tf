@@ -328,6 +328,11 @@ resource "aws_iam_role_policy_attachment" "ecs_instance" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }
 
+resource "aws_iam_role_policy_attachment" "ecs_instance_ssm" {
+  role       = aws_iam_role.ecs_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_iam_instance_profile" "ecs" {
   name = "cloudtasks-ecs-instance-profile"
   role = aws_iam_role.ecs_instance.name
@@ -470,6 +475,8 @@ resource "aws_launch_template" "ecs" {
     aws_db_instance.postgres
   ]
 }
+
+
 
 # ============================================================
 # ECS AUTO SCALING GROUP
