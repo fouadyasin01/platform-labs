@@ -367,3 +367,175 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 data "aws_ssm_parameter" "ecs_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
 }
+
+
+# ============================================================
+# ECS EC2 CAPACITY
+# ============================================================
+
+resource "aws_launch_template" "ecs" {
+  name_prefix   = "cloudtasks-ecs-"
+  image_id      = data.aws_ssm_parameter.ecs_ami.value
+  instance_type = "t3.micro"
+
+  vpc_security_group_ids = [
+    aws_security_group.app.id
+  ]
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ecs.name
+  }
+
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+
+    # Configure ECS cluster
+    echo "ECS_CLUSTER=${aws_ecs_cluster.main.name}" >> /etc/ecs/ecs.config
+
+    # Start SSM Agent
+    systemctl enable amazon-ssm-agent
+    systemctl start amazon-ssm-agent
+
+    # Install PostgreSQL 16 client
+    dnf install -y postgresql16
+
+    # Wait for PostgreSQL/RDS
+    POSTGRES_READY=false
+
+    for i in $(seq 1 60); do
+      if PGPASSWORD='${var.db_password}' psql \
+        -h '${aws_db_instance.postgres.address}' \
+        -p 5432 \
+        -U 'cloudtasks' \
+        -d 'cloudtasks' \
+        -c "SELECT 1;" >/dev/null 2>&1; then
+
+        POSTGRES_READY=true
+        echo "PostgreSQL is ready."
+        break
+      fi
+
+      echo "Waiting for PostgreSQL..."
+      sleep 10
+    done
+
+    if [ "$POSTGRES_READY" != "true" ]; then
+      echo "PostgreSQL did not become ready."
+      exit 1
+    fi
+
+    # Check whether tasks table exists
+    TABLE_EXISTS=$(PGPASSWORD='${var.db_password}' psql \
+      -h '${aws_db_instance.postgres.address}' \
+      -p 5432 \
+      -U 'cloudtasks' \
+      -d 'cloudtasks' \
+      -tAc "SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'tasks'
+      );")
+
+    if [ "$TABLE_EXISTS" = "t" ]; then
+      echo "tasks table already exists. Nothing to do."
+    else
+      echo "tasks table does not exist. Creating it..."
+
+      PGPASSWORD='${var.db_password}' psql \
+        -h '${aws_db_instance.postgres.address}' \
+        -p 5432 \
+        -U 'cloudtasks' \
+        -d 'cloudtasks' \
+        -c "CREATE TABLE IF NOT EXISTS tasks (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          completed BOOLEAN DEFAULT FALSE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );"
+
+      echo "tasks table created."
+    fi
+  EOF
+  )
+
+  tag_specifications {
+    resource_type = "instance"
+
+    tags = merge(local.common_tags, {
+      Name = "cloudtasks-ecs"
+    })
+  }
+
+  depends_on = [
+    aws_db_instance.postgres
+  ]
+}
+
+# ============================================================
+# ECS AUTO SCALING GROUP
+# ============================================================
+
+resource "aws_autoscaling_group" "ecs" {
+  depends_on = [
+    aws_db_instance.postgres
+  ]
+
+  name = "cloudtasks-ecs-asg"
+
+  min_size         = 2
+  desired_capacity = 2
+  max_size         = 4
+
+  vpc_zone_identifier = aws_subnet.app[*].id
+
+  launch_template {
+    id      = aws_launch_template.ecs.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "cloudtasks-ecs"
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "AmazonECSManaged"
+    value               = "true"
+    propagate_at_launch = true
+  }
+}
+
+# ============================================================
+# ECS CAPACITY PROVIDER
+# ============================================================
+
+resource "aws_ecs_capacity_provider" "main" {
+  name = "cloudtasks-ec2"
+
+  auto_scaling_group_provider {
+    auto_scaling_group_arn = aws_autoscaling_group.ecs.arn
+
+    managed_scaling {
+      status          = "ENABLED"
+      target_capacity = 100
+    }
+
+    managed_termination_protection = "DISABLED"
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name = aws_ecs_cluster.main.name
+
+  capacity_providers = [
+    aws_ecs_capacity_provider.main.name
+  ]
+
+  default_capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.main.name
+    weight            = 1
+  }
+}
