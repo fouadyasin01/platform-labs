@@ -8,4 +8,5 @@ variable "db_password" {
   description = "Password for the CloudTasks PostgreSQL database."
   type        = string
   sensitive   = true
+  default     = "cloudtasks_db_password"
 }
