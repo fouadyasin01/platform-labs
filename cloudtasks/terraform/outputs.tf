@@ -1,6 +1,3 @@
-output "azs" {
-  value = data.aws_availability_zones.available.names
-}
 
 output "bucket_name" {
   value = module.frontend.s3_frontend_bucket
