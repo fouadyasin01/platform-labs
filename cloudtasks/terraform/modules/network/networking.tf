@@ -2,36 +2,21 @@
 # NETWORKING
 # ============================================================
 
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-
-locals {
-  azs = slice(data.aws_availability_zones.available.names, 0, 2)
-
-  common_tags = {
-    Project     = "cloudtasks"
-    Environment = "dev"
-    ManagedBy   = "terraform"
-  }
-}
-
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-vpc"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-vpc"
   })
 }
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-igw"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-igw"
   })
 }
 
@@ -40,11 +25,11 @@ resource "aws_subnet" "public" {
 
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.${count.index + 1}.0/24"
-  availability_zone       = local.azs[count.index]
+  availability_zone       = var.azs[count.index]
   map_public_ip_on_launch = true
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-public-${count.index + 1}"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-public-${count.index + 1}"
     Tier = "public"
   })
 }
@@ -54,10 +39,10 @@ resource "aws_subnet" "app" {
 
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.${count.index + 11}.0/24"
-  availability_zone = local.azs[count.index]
+  availability_zone = var.azs[count.index]
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-app-${count.index + 1}"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-app-${count.index + 1}"
     Tier = "private-app"
   })
 }
@@ -67,10 +52,10 @@ resource "aws_subnet" "db" {
 
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.${count.index + 21}.0/24"
-  availability_zone = local.azs[count.index]
+  availability_zone = var.azs[count.index]
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-db-${count.index + 1}"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-db-${count.index + 1}"
     Tier = "private-db"
   })
 }
@@ -83,8 +68,8 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.main.id
   }
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-public-rt"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-public-rt"
   })
 }
 
@@ -100,8 +85,8 @@ resource "aws_eip" "nat" {
 
   domain = "vpc"
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-nat-eip-${count.index + 1}"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-nat-eip-${count.index + 1}"
   })
 }
 
@@ -113,8 +98,8 @@ resource "aws_nat_gateway" "main" {
 
   depends_on = [aws_internet_gateway.main]
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-nat-${count.index + 1}"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-nat-${count.index + 1}"
   })
 }
 
@@ -128,8 +113,8 @@ resource "aws_route_table" "app" {
     nat_gateway_id = aws_nat_gateway.main[count.index].id
   }
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-app-rt-${count.index + 1}"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-app-rt-${count.index + 1}"
   })
 }
 
@@ -143,8 +128,8 @@ resource "aws_route_table_association" "app" {
 resource "aws_route_table" "db" {
   vpc_id = aws_vpc.main.id
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-db-rt"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-db-rt"
   })
 }
 

@@ -1,30 +1,12 @@
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-locals {
-  azs = slice(data.aws_availability_zones.available.names, 0, 2)
-
-  common_tags = {
-    Project     = "cloudtasks"
-    Environment = "dev"
-    ManagedBy   = "terraform"
-  }
-}
-
-
-
-
-
 # ============================================================
 # ECS CLUSTER
 # ============================================================
 
 resource "aws_ecs_cluster" "main" {
-  name = "cloudtasks"
+  name = "${var.name_prefix}-ecs"
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-ecs"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-ecs"
   })
 }
 
@@ -33,7 +15,7 @@ resource "aws_ecs_cluster" "main" {
 # ============================================================
 
 resource "aws_iam_role" "ecs_instance" {
-  name = "cloudtasks-ecs-instance-role"
+  name = "${var.name_prefix}-ecs-instance-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -51,7 +33,7 @@ resource "aws_iam_role" "ecs_instance" {
     ]
   })
 
-  tags = local.common_tags
+  tags = var.common_tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_instance" {
@@ -65,12 +47,14 @@ resource "aws_iam_role_policy_attachment" "ecs_instance_ssm" {
 }
 
 resource "aws_iam_instance_profile" "ecs" {
-  name = "cloudtasks-ecs-instance-profile"
+  name = "${var.name_prefix}-ecs-instance-profile"
   role = aws_iam_role.ecs_instance.name
+
+  tags = var.common_tags
 }
 
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "cloudtasks-ecs-task-execution-role"
+  name = "${var.name_prefix}-ecs-task-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -88,7 +72,7 @@ resource "aws_iam_role" "ecs_task_execution" {
     ]
   })
 
-  tags = local.common_tags
+  tags = var.common_tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
@@ -104,13 +88,12 @@ data "aws_ssm_parameter" "ecs_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
 }
 
-
 # ============================================================
 # ECS EC2 CAPACITY
 # ============================================================
 
 resource "aws_launch_template" "ecs" {
-  name_prefix   = "cloudtasks-ecs-"
+  name_prefix   = "${var.name_prefix}-ecs-"
   image_id      = data.aws_ssm_parameter.ecs_ami.value
   instance_type = "t3.micro"
 
@@ -197,8 +180,8 @@ resource "aws_launch_template" "ecs" {
   tag_specifications {
     resource_type = "instance"
 
-    tags = merge(local.common_tags, {
-      Name = "cloudtasks-ecs"
+    tags = merge(var.common_tags, {
+      Name = "${var.name_prefix}-ecs"
     })
   }
 
@@ -206,9 +189,6 @@ resource "aws_launch_template" "ecs" {
     var.postgres_instance
   ]
 }
-
-
-
 # ============================================================
 # ECS AUTO SCALING GROUP
 # ============================================================
@@ -218,7 +198,7 @@ resource "aws_autoscaling_group" "ecs" {
     var.postgres_instance
   ]
 
-  name = "cloudtasks-ecs-asg"
+  name = "${var.name_prefix}-ecs-asg"
 
   min_size         = 2
   desired_capacity = 2
@@ -233,7 +213,7 @@ resource "aws_autoscaling_group" "ecs" {
 
   tag {
     key                 = "Name"
-    value               = "cloudtasks-ecs"
+    value               = "${var.name_prefix}-ecs"
     propagate_at_launch = true
   }
 
@@ -249,7 +229,7 @@ resource "aws_autoscaling_group" "ecs" {
 # ============================================================
 
 resource "aws_ecs_capacity_provider" "main" {
-  name = "cloudtasks-ec2"
+  name = "${var.name_prefix}-ec2"
 
   auto_scaling_group_provider {
     auto_scaling_group_arn = aws_autoscaling_group.ecs.arn
@@ -262,7 +242,7 @@ resource "aws_ecs_capacity_provider" "main" {
     managed_termination_protection = "DISABLED"
   }
 
-  tags = local.common_tags
+  tags = var.common_tags
 }
 
 resource "aws_ecs_cluster_capacity_providers" "main" {
@@ -283,7 +263,7 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 # ============================================================
 
 resource "aws_ecs_task_definition" "api" {
-  family = "cloudtasks-api"
+  family = "${var.name_prefix}-api"
 
   network_mode             = "bridge"
   requires_compatibilities = ["EC2"]
@@ -295,7 +275,7 @@ resource "aws_ecs_task_definition" "api" {
 
   container_definitions = jsonencode([
     {
-      name      = "cloudtasks-api"
+      name      = "${var.name_prefix}-api"
       image     = "vanbasten01/cloudtasks-api:1.1"
       essential = true
 
@@ -336,7 +316,7 @@ resource "aws_ecs_task_definition" "api" {
     }
   ])
 
-  tags = local.common_tags
+  tags = var.common_tags
 }
 
 # ============================================================
@@ -344,7 +324,7 @@ resource "aws_ecs_task_definition" "api" {
 # ============================================================
 
 resource "aws_ecs_service" "api" {
-  name            = "cloudtasks-api"
+  name            = "${var.name_prefix}-api"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
 
@@ -357,16 +337,14 @@ resource "aws_ecs_service" "api" {
 
   load_balancer {
     target_group_arn = var.lb_target_group_arn
-    container_name   = "cloudtasks-api"
+    container_name   = "${var.name_prefix}-api"
     container_port   = 3000
   }
 
   depends_on = [
-    var.aws_lb_listener_http,  
+    var.aws_lb_listener_http,
     aws_ecs_cluster_capacity_providers.main
   ]
 
-  tags = local.common_tags
+  tags = var.common_tags
 }
-
-

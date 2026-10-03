@@ -10,3 +10,14 @@ variable "db_password" {
   sensitive   = true
   default     = "cloudtasks_db_password"
 }
+
+variable "environment" {
+  description = "The environment name (e.g., dev, staging, prod)"
+  type        = string
+}
+
+
+variable "project_name" {
+  description = "The project name for tagging and identification."
+  type        = string
+}

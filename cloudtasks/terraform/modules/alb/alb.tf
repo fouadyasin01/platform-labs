@@ -1,19 +1,9 @@
-
 # ============================================================
 # APPLICATION LOAD BALANCER
 # ============================================================
 
-
-locals {
-  common_tags = {
-    Project     = "cloudtasks"
-    Environment = "dev"
-    ManagedBy   = "terraform"
-  }
-}
-
 resource "aws_lb" "main" {
-  name               = "cloudtasks-alb"
+  name               = "${var.name_prefix}-alb"
   internal           = false
   load_balancer_type = "application"
 
@@ -23,13 +13,13 @@ resource "aws_lb" "main" {
 
   subnets = var.public_subnets[*].id
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-alb"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-alb"
   })
 }
 
 resource "aws_lb_target_group" "api" {
-  name        = "cloudtasks-api"
+  name        = "${var.name_prefix}-api"
   port        = 3000
   protocol    = "HTTP"
   target_type = "instance"
@@ -51,8 +41,8 @@ resource "aws_lb_target_group" "api" {
     matcher = "200"
   }
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-api"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-api"
   })
 }
 
@@ -67,4 +57,3 @@ resource "aws_lb_listener" "http" {
     target_group_arn = aws_lb_target_group.api.arn
   }
 }
-

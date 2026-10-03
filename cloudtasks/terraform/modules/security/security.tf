@@ -1,19 +1,9 @@
-
 # ============================================================
 # SECURITY GROUPS
 # ============================================================
 
-
-locals {
-  common_tags = {
-    Project     = "cloudtasks"
-    Environment = "dev"
-    ManagedBy   = "terraform"
-  }
-}
-
 resource "aws_security_group" "alb" {
-  name        = "cloudtasks-alb-sg"
+  name        = "${var.name_prefix}-alb-sg"
   description = "Security group for CloudTasks ALB"
   vpc_id      = var.vpc_id
 
@@ -33,13 +23,13 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-alb-sg"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-alb-sg"
   })
 }
 
 resource "aws_security_group" "app" {
-  name        = "cloudtasks-app-sg"
+  name        = "${var.name_prefix}-app-sg"
   description = "Security group for CloudTasks ECS application"
   vpc_id      = var.vpc_id
 
@@ -59,13 +49,13 @@ resource "aws_security_group" "app" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-app-sg"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-app-sg"
   })
 }
 
 resource "aws_security_group" "rds" {
-  name        = "cloudtasks-rds-sg"
+  name        = "${var.name_prefix}-rds-sg"
   description = "Security group for CloudTasks PostgreSQL"
   vpc_id      = var.vpc_id
 
@@ -85,7 +75,7 @@ resource "aws_security_group" "rds" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-rds-sg"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-rds-sg"
   })
 }

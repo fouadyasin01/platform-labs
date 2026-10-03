@@ -1,35 +1,21 @@
-
-
-
 # ============================================================
 # FRONTEND HOSTING & CDN
 # ============================================================
 
-
-
-
-
 data "aws_caller_identity" "current" {}
 
 locals {
-  common_tags = {
-    Project     = "cloudtasks"
-    Environment = "dev"
-    ManagedBy   = "terraform"
-  }
-
   frontend_files = fileset(
     var.frontend_dist_path,
     "**"
   )
 }
 
-
 resource "aws_s3_bucket" "frontend" {
-  bucket = "cloudtasks-frontend-${data.aws_caller_identity.current.account_id}"
+  bucket = "${var.name_prefix}-frontend-${data.aws_caller_identity.current.account_id}"
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-frontend"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-frontend"
   })
 }
 
@@ -49,7 +35,6 @@ resource "aws_s3_bucket_ownership_controls" "frontend" {
     object_ownership = "BucketOwnerEnforced"
   }
 }
-
 
 resource "aws_s3_object" "frontend" {
   for_each = local.frontend_files
@@ -81,8 +66,8 @@ resource "aws_s3_object" "frontend" {
 # ============================================================
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "cloudtasks-frontend-oac"
-  description                       = "OAC for CloudTasks frontend S3 bucket"
+  name                              = "${var.name_prefix}-frontend-oac"
+  description                       = "OAC for ${var.name_prefix} frontend S3 bucket"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -95,7 +80,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   # Frontend: S3
   origin {
     domain_name = aws_s3_bucket.frontend.bucket_regional_domain_name
-    origin_id   = "cloudtasks-frontend-s3"
+    origin_id   = "${var.name_prefix}-frontend-s3"
 
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
@@ -103,7 +88,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   # Backend API: ALB
   origin {
     domain_name = var.lb_dns_name
-    origin_id   = "cloudtasks-alb"
+    origin_id   = "${var.name_prefix}-alb"
 
     custom_origin_config {
       http_port              = 80
@@ -119,7 +104,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   # API requests -> ALB
   ordered_cache_behavior {
     path_pattern     = "/api/*"
-    target_origin_id = "cloudtasks-alb"
+    target_origin_id = "${var.name_prefix}-alb"
 
     viewer_protocol_policy = "redirect-to-https"
 
@@ -153,7 +138,7 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   # Everything else -> S3
   default_cache_behavior {
-    target_origin_id       = "cloudtasks-frontend-s3"
+    target_origin_id       = "${var.name_prefix}-frontend-s3"
     viewer_protocol_policy = "redirect-to-https"
 
     allowed_methods = [
@@ -187,8 +172,8 @@ resource "aws_cloudfront_distribution" "frontend" {
     cloudfront_default_certificate = true
   }
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-frontend-cdn"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-frontend-cdn"
   })
 }
 

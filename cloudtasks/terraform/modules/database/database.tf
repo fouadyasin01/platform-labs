@@ -1,31 +1,18 @@
-
-
 # ============================================================
 # RDS POSTGRESQL
 # ============================================================
 
-
-
-locals {
-  common_tags = {
-    Project     = "cloudtasks"
-    Environment = "dev"
-    ManagedBy   = "terraform"
-  }
-}
-
-
 resource "aws_db_subnet_group" "postgres" {
-  name       = "cloudtasks-postgres"
+  name       = "${var.name_prefix}-postgres"
   subnet_ids = var.db_subnets[*].id
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-postgres"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-postgres"
   })
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier = "cloudtasks-postgres"
+  identifier = "${var.name_prefix}-postgres"
 
   engine         = "postgres"
   engine_version = "16"
@@ -53,7 +40,7 @@ resource "aws_db_instance" "postgres" {
 
   skip_final_snapshot = true
 
-  tags = merge(local.common_tags, {
-    Name = "cloudtasks-postgres"
+  tags = merge(var.common_tags, {
+    Name = "${var.name_prefix}-postgres"
   })
 }
