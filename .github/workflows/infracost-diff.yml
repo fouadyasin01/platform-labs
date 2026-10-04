@@ -9,7 +9,7 @@ on:
     paths:
       - "cloudtasks/terraform/**"
       - "cloudtasks/infracost.yml"
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -20,30 +20,62 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout head branch
-        if: github.event.action != 'closed'
+      - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           path: head
 
       - name: Checkout base branch
-        if: github.event.action != 'closed'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: base
 
+      - name: Select PR environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ github.event.pull_request.base.ref }}" in
+            project/cloudtasks)
+              ENV_NAME="dev"
+              ;;
+            project/cloudtasks-staging)
+              ENV_NAME="staging"
+              ;;
+            project/cloudtasks-prod)
+              ENV_NAME="prod"
+              ;;
+            *)
+              echo "::error::Unsupported target branch"
+              exit 1
+              ;;
+          esac
+
+          echo "ENV_NAME=${ENV_NAME}" >> "$GITHUB_ENV"
+
+      - name: Configure Infracost for PR environment
+        working-directory: head/cloudtasks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > infracost.yml <<EOF
+          version: 0.1
+
+          projects:
+            - path: terraform
+              name: cloudtasks-${ENV_NAME}
+              terraform_var_files:
+                - terraform/environments/${ENV_NAME}.tfvars
+          EOF
+
+          echo "Infracost environment: ${ENV_NAME}"
+          cat infracost.yml
+
       - name: Run Infracost Diff
-        if: github.event.action != 'closed'
         uses: infracost/actions/diff@v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
           base-path: base
           head-path: head
-
-      - name: Update pull request status
-        if: github.event.action == 'closed'
-        uses: infracost/actions/diff@v4
-        with:
-          api-key: ${{ secrets.INFRACOST_API_KEY }}
-          pr-status: ${{ github.event.pull_request.merged && 'MERGED' || 'CLOSED' }}
