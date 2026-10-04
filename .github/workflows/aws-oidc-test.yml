@@ -1,7 +1,9 @@
 name: AWS OIDC Test
 
-
 on:
+  push:
+    branches:
+      - project/cloudtasks
   workflow_dispatch:
 
 permissions:
