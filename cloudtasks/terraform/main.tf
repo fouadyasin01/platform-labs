@@ -88,4 +88,4 @@ module "monitoring" {
   ecs_service_name            = module.ecs.service_name
   alb_arn_suffix              = module.alb.lb_arn_suffix
   alb_target_group_arn_suffix = module.alb.target_group_arn_suffix
-}# Infracost PR test
+} # Infracost PR test
