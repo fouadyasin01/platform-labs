@@ -9,7 +9,7 @@ on:
     paths:
       - "cloudtasks/terraform/**"
       - "cloudtasks/infracost.yml"
-    types: [opened, synchronize, closed, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
@@ -36,9 +36,14 @@ jobs:
       - name: Run Infracost Diff
         if: github.event.action != 'closed'
         uses: infracost/actions/diff@v4
-        env:
-          INFRACOST_CLI_LOG_LEVEL: debug
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
           base-path: base
           head-path: head
+
+      - name: Update pull request status
+        if: github.event.action == 'closed'
+        uses: infracost/actions/diff@v4
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+          pr-status: ${{ github.event.pull_request.merged && 'MERGED' || 'CLOSED' }}
