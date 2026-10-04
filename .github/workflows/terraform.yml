@@ -74,6 +74,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloudtasks/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: cloudtasks/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: cloudtasks/frontend
+        run: npm run build
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -201,6 +216,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloudtasks/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: cloudtasks/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: cloudtasks/frontend
+        run: npm run build
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
