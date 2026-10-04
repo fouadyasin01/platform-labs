@@ -26,3 +26,4 @@ variable "project_name" {
   description = "The project name for tagging and identification."
   type        = string
 }
+# Infracost CI test
