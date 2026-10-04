@@ -1,6 +1,16 @@
 name: Infracost Scan
 
 on:
+  pull_request:
+    branches:
+      - project/cloudtasks
+      - project/cloudtasks-staging
+      - project/cloudtasks-prod
+    paths:
+      - "cloudtasks/terraform/**"
+      - "cloudtasks/infracost.yml"
+    types: [opened, synchronize, reopened]
+
   push:
     branches:
       - project/cloudtasks
@@ -9,10 +19,12 @@ on:
     paths:
       - "cloudtasks/terraform/**"
       - "cloudtasks/infracost.yml"
+
   workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   infracost-scan:
@@ -21,6 +33,73 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select PR environment
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ github.event.pull_request.base.ref }}" in
+            project/cloudtasks)
+              ENV_NAME="dev"
+              ;;
+            project/cloudtasks-staging)
+              ENV_NAME="staging"
+              ;;
+            project/cloudtasks-prod)
+              ENV_NAME="prod"
+              ;;
+            *)
+              echo "::error::Unsupported target branch: ${{ github.event.pull_request.base.ref }}"
+              exit 1
+              ;;
+          esac
+
+          echo "ENV_NAME=${ENV_NAME}" >> "$GITHUB_ENV"
+
+      - name: Select environment for push
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ github.ref_name }}" in
+            project/cloudtasks)
+              ENV_NAME="dev"
+              ;;
+            project/cloudtasks-staging)
+              ENV_NAME="staging"
+              ;;
+            project/cloudtasks-prod)
+              ENV_NAME="prod"
+              ;;
+            *)
+              echo "::error::Unsupported branch: ${{ github.ref_name }}"
+              exit 1
+              ;;
+          esac
+
+          echo "ENV_NAME=${ENV_NAME}" >> "$GITHUB_ENV"
+
+      - name: Configure Infracost for target environment
+        working-directory: cloudtasks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > infracost.yml <<EOF
+          version: 0.1
+
+          projects:
+            - path: terraform
+              name: cloudtasks-${ENV_NAME}
+              terraform_var_files:
+                - terraform/environments/${ENV_NAME}.tfvars
+          EOF
+
+          echo "Selected environment: ${ENV_NAME}"
+          cat infracost.yml
 
       - name: Run Infracost Scan
         uses: infracost/actions/scan@v4
