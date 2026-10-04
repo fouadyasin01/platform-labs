@@ -9,7 +9,7 @@ on:
     paths:
       - "cloudtasks/terraform/**"
       - "cloudtasks/infracost.yml"
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, closed, reopened]
 
 permissions:
   contents: read
@@ -21,18 +21,23 @@ jobs:
 
     steps:
       - name: Checkout head branch
+        if: github.event.action != 'closed'
         uses: actions/checkout@v4
         with:
           path: head
 
       - name: Checkout base branch
+        if: github.event.action != 'closed'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: base
 
       - name: Run Infracost Diff
+        if: github.event.action != 'closed'
         uses: infracost/actions/diff@v4
+        env:
+          INFRACOST_CLI_LOG_LEVEL: debug
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
           base-path: base

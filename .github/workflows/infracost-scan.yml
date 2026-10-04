@@ -1,16 +1,9 @@
 name: Infracost Scan
+# Managed by infracost ci setup v1 — re-run `infracost ci setup --pipeline` to update.
 
 on:
   push:
-    branches:
-      - project/cloudtasks
-      - project/cloudtasks-staging
-      - project/cloudtasks-prod
-    paths:
-      - "cloudtasks/terraform/**"
-      - "cloudtasks/infracost.yml"
-
-  workflow_dispatch:
+    branches: ["master"]
 
 permissions:
   contents: read
@@ -18,13 +11,12 @@ permissions:
 jobs:
   infracost-scan:
     runs-on: ubuntu-latest
-
+    container: ghcr.io/infracost/ci:0.1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Run Infracost Scan
-        uses: infracost/actions/scan@v4
-        with:
-          api-key: ${{ secrets.INFRACOST_API_KEY }}
-          path: cloudtasks
+        env:
+          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_API_KEY }}
+        run: infracost-ci scan --path .
