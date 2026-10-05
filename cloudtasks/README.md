@@ -435,65 +435,35 @@ This prevents accidentally operating against the wrong environment's state.
 ```text
 
 cloudtasks/
-
 ├── backend/
-
 │   ├── src/
-
 │   ├── package.json
-
 │   └── ...
-
 │
-
 ├── frontend/
-
 │   ├── src/
-
 │   ├── package.json
-
 │   └── ...
-
 │
-
 ├── docker-compose.yml
-
 │
-
 └── terraform/
-
     ├── main.tf
-
     ├── variables.tf
-
     ├── outputs.tf
-
     ├── versions.tf
-
     ├── environments/
-
     │   ├── dev.tfvars
-
     │   ├── staging.tfvars
-
     │   └── prod.tfvars
-
     │
-
     └── modules/
-
         ├── network/
-
         ├── security/
-
         ├── alb/
-
         ├── ecs/
-
         ├── database/
-
         └── frontend/
-
         └── monitoring/
 
 ```
