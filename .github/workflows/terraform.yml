@@ -1,0 +1,269 @@
+name: Terraform CI/CD
+
+on:
+  pull_request:
+    branches:
+      - project/cloudtasks
+      - project/cloudtasks-staging
+      - project/cloudtasks-prod
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
+    paths:
+      - "cloudtasks/terraform/**"
+
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  set-environment:
+    name: Determine Terraform Environment
+    runs-on: ubuntu-latest
+
+    outputs:
+      tf_env: ${{ steps.environment.outputs.tf_env }}
+
+    steps:
+      - name: Determine environment
+        id: environment
+        shell: bash
+        run: |
+          BRANCH="${{ github.base_ref }}"
+
+          case "$BRANCH" in
+            project/cloudtasks)
+              TF_ENV="dev"
+              ;;
+            project/cloudtasks-staging)
+              TF_ENV="staging"
+              ;;
+            project/cloudtasks-prod)
+              TF_ENV="prod"
+              ;;
+            *)
+              echo "Unsupported branch: $BRANCH"
+              exit 1
+              ;;
+          esac
+
+          echo "Branch: $BRANCH"
+          echo "Terraform environment: $TF_ENV"
+          echo "tf_env=$TF_ENV" >> "$GITHUB_OUTPUT"
+
+  terraform-plan:
+    name: Terraform Plan
+    needs: set-environment
+
+    if: >
+      github.event_name == 'pull_request' &&
+      (
+        github.event.action == 'opened' ||
+        github.event.action == 'synchronize' ||
+        github.event.action == 'reopened'
+      )
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloudtasks/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: cloudtasks/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: cloudtasks/frontend
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Format Check
+        run: terraform -chdir=cloudtasks/terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: |
+          terraform -chdir=cloudtasks/terraform init \
+            -input=false \
+            -reconfigure \
+            -backend-config="key=cloudtasks/${{ needs.set-environment.outputs.tf_env }}/terraform.tfstate"
+
+      - name: Terraform Validate
+        run: terraform -chdir=cloudtasks/terraform validate
+
+      - name: Terraform Plan
+        run: |
+          terraform -chdir=cloudtasks/terraform plan \
+            -input=false \
+            -out=tfplan \
+            -var-file="environments/${{ needs.set-environment.outputs.tf_env }}.tfvars"
+
+      - name: Generate Readable Terraform Plan
+        run: |
+          terraform -chdir=cloudtasks/terraform show \
+            -no-color \
+            tfplan > cloudtasks/terraform/terraform-plan.txt
+
+      - name: Comment Terraform Plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const plan = fs.readFileSync(
+              'cloudtasks/terraform/terraform-plan.txt',
+              'utf8'
+            );
+
+            const environment = '${{ needs.set-environment.outputs.tf_env }}';
+
+            const marker = '<!-- terraform-plan-comment -->';
+
+            const body = `${marker}
+            ## Terraform Plan — \`${environment}\`
+
+            **Environment:** \`${environment}\`
+
+            **State:** \`cloudtasks/${environment}/terraform.tfstate\`
+
+            <details>
+            <summary>Show Terraform plan</summary>
+
+            \`\`\`text
+            ${plan}
+            \`\`\`
+
+            </details>
+
+            _Generated automatically by GitHub Actions._`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner,
+                repo,
+                issue_number
+              }
+            );
+
+            const existingComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes(marker)
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+            }
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ needs.set-environment.outputs.tf_env }}
+          path: |
+            cloudtasks/terraform/tfplan
+            cloudtasks/terraform/terraform-plan.txt
+          retention-days: 7
+
+  terraform-apply:
+    name: Terraform Apply
+    needs: set-environment
+
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ needs.set-environment.outputs.tf_env }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloudtasks/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: cloudtasks/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: cloudtasks/frontend
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Format Check
+        run: terraform -chdir=cloudtasks/terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: |
+          terraform -chdir=cloudtasks/terraform init \
+            -input=false \
+            -reconfigure \
+            -backend-config="key=cloudtasks/${{ needs.set-environment.outputs.tf_env }}/terraform.tfstate"
+
+      - name: Terraform Validate
+        run: terraform -chdir=cloudtasks/terraform validate
+
+      - name: Terraform Plan
+        run: |
+          terraform -chdir=cloudtasks/terraform plan \
+            -input=false \
+            -out=tfplan \
+            -var-file="environments/${{ needs.set-environment.outputs.tf_env }}.tfvars"
+
+      - name: Terraform Apply
+        run: |
+          terraform -chdir=cloudtasks/terraform apply \
+            -input=false \
+            -auto-approve \
+            tfplan

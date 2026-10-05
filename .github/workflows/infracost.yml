@@ -1,0 +1,176 @@
+
+name: Infracost
+
+on:
+  pull_request:
+    branches:
+      - project/cloudtasks
+      - project/cloudtasks-staging
+      - project/cloudtasks-prod
+    paths:
+      - "cloudtasks/terraform/**"
+      - "cloudtasks/infracost.yml"
+    types: [opened, synchronize, reopened]
+
+  push:
+    branches:
+      - project/cloudtasks
+      - project/cloudtasks-staging
+      - project/cloudtasks-prod
+    paths:
+      - "cloudtasks/terraform/**"
+      - "cloudtasks/infracost.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  infracost:
+    name: Infracost
+    runs-on: ubuntu-latest
+
+    steps:
+      # --------------------------------------------------
+      # 1. Checkout
+      # --------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------
+      # 2. Determine environment
+      # --------------------------------------------------
+      - name: Determine Environment
+        id: environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH="${{ github.base_ref }}"
+          else
+            BRANCH="${{ github.ref_name }}"
+          fi
+
+          case "$BRANCH" in
+            project/cloudtasks)
+              ENV_NAME="dev"
+              ;;
+            project/cloudtasks-staging)
+              ENV_NAME="staging"
+              ;;
+            project/cloudtasks-prod)
+              ENV_NAME="prod"
+              ;;
+            *)
+              echo "::error::Unsupported branch: $BRANCH"
+              exit 1
+              ;;
+          esac
+
+          echo "ENV_NAME=${ENV_NAME}" >> "$GITHUB_ENV"
+          echo "Environment: ${ENV_NAME}"
+
+      # --------------------------------------------------
+      # 3. Configure Infracost
+      # --------------------------------------------------
+      - name: Configure Infracost
+        working-directory: cloudtasks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > infracost.yml <<EOF
+          version: 0.1
+
+          projects:
+            - path: terraform
+              name: cloudtasks-${ENV_NAME}
+              terraform_var_files:
+                - terraform/environments/${ENV_NAME}.tfvars
+          EOF
+
+          echo "Generated infracost.yml:"
+          cat infracost.yml
+
+      # --------------------------------------------------
+      # 4. Install Infracost CLI
+      # --------------------------------------------------
+      - name: Install Infracost CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl -fsSL \
+            https://raw.githubusercontent.com/infracost/cli/master/scripts/install.sh \
+            | sh
+
+          infracost version
+
+      # --------------------------------------------------
+      # 5. Authenticate Infracost
+      # --------------------------------------------------
+      - name: Authenticate Infracost
+        env:
+          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          infracost auth whoami
+
+      # --------------------------------------------------
+      # 6. Run Infracost scan
+      # --------------------------------------------------
+      - name: Run Infracost scan
+        working-directory: cloudtasks
+        env:
+          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          infracost scan
+
+      # --------------------------------------------------
+      # 7. Inspect and save report
+      # --------------------------------------------------
+      - name: Inspect Infracost results
+        working-directory: cloudtasks
+        env:
+          INFRACOST_CLI_AUTHENTICATION_TOKEN: ${{ secrets.INFRACOST_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Infracost Summary"
+            echo
+            infracost inspect --summary
+
+            echo
+            echo "## Resources"
+            echo
+            infracost inspect --group-by resource
+          } | tee /tmp/infracost-inspect.txt
+
+      # --------------------------------------------------
+      # 8. Comment report on PR
+      # --------------------------------------------------
+      - name: Comment Infracost Report
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## 💰 Infracost Report"
+            echo
+            echo '```text'
+            cat /tmp/infracost-inspect.txt
+            echo '```'
+          } > /tmp/infracost-comment.md
+
+          gh pr comment "$PR_NUMBER" \
+            --body-file /tmp/infracost-comment.md

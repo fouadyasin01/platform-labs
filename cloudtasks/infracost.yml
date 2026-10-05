@@ -1,0 +1,17 @@
+version: 0.1
+
+projects:
+  - path: terraform
+    name: cloudtasks-dev
+    terraform_var_files:
+      - terraform/environments/dev.tfvars
+
+  - path: terraform
+    name: cloudtasks-staging
+    terraform_var_files:
+      - terraform/environments/staging.tfvars
+
+  - path: terraform
+    name: cloudtasks-prod
+    terraform_var_files:
+      - terraform/environments/prod.tfvars
