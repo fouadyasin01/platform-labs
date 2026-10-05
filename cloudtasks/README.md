@@ -1,468 +1,567 @@
-# CloudTasks
+**# CloudTasks**
 
-> **Containerized SaaS application and multi-environment AWS platform built with Terraform.**
+\\> **\*\*\\\*\\\*A multi-environment AWS platform for a containerized SaaS application, engineered as Infrastructure as Code with Terraform and delivered through GitHub Actions.\\\*\\\*\*\***
 
-CloudTasks is a full-stack task management application built with **React/Vite, Node.js/Express, and PostgreSQL**, together with the AWS platform required to run it as a scalable and resilient workload.
+CloudTasks combines a React/Vite frontend, Node.js/Express API, PostgreSQL, Docker, and a modular AWS platform. The project focuses on **\*\*\\\*\\\*reproducible infrastructure, secure CI/CD, observability, environment isolation, and FinOps visibility\\\*\\\*\*\***.
 
-The project focuses on **Infrastructure as Code (IaC)**: the AWS infrastructure is defined with **Terraform**, organized into reusable modules, and designed to support **development, staging, and production** from the same codebase.
+**## AWS Platform**
 
-**Stack:** React · Vite · Node.js · Express · PostgreSQL · Docker · Terraform · AWS
+![CloudTasks AWS Platform Architecture]\\(docs/aws-architecture.png)
 
----
+The platform is organized around a multi-AZ AWS architecture:
 
-## Architecture
+\\| Layer | Implementation |
 
-CloudTasks is built around three application layers:
+\\|---|---|
 
-| Layer | Implementation | AWS |
-|---|---|---|
-| **Frontend** | React / Vite | Amazon S3 + CloudFront |
-| **Application** | Node.js / Express + Docker | ALB + ECS on EC2 |
-| **Data** | PostgreSQL | Amazon RDS |
+\\| Frontend | React/Vite → S3 + CloudFront |
 
-![CloudTasks App Architecture](docs/aws-architecture.png)
+\\| API | Node.js/Express → Docker → ECS on EC2 |
 
-### Traffic flow
+\\| Traffic | Application Load Balancer |
 
-```text
-                         CloudFront
-                        /          \
-                       /            \
-              Static assets         /api/*
-                    |                 |
-                    v                 v
-               Amazon S3            ALB
-              React assets            |
-                                      v
-                                ECS on EC2
-                                      |
-                                      v
-                               RDS PostgreSQL
-```
+\\| Compute | ECS on EC2 + Auto Scaling + Capacity Provider |
 
-The frontend and API are deliberately separated: CloudFront serves the React application from S3, while `/api/*` requests are routed to the Application Load Balancer and then to the ECS service.
+\\| Database | Amazon RDS PostgreSQL Multi-AZ |
 
-### Platform
+\\| Networking | VPC, public/private subnets, routing, security groups |
 
-The application runs on an AWS platform consisting of:
+\\| Monitoring | **\*\*\\\*\\\*Amazon CloudWatch alarms managed with Terraform\\\*\\\*\*\*** |
 
-- VPC across **two Availability Zones**
-- Public, private application, and private database subnets
-- Application Load Balancer
-- ECS on EC2
-- EC2 Auto Scaling Group
-- ECS capacity provider
-- **RDS PostgreSQL Multi-AZ**
-- Security Groups and IAM
-- ACM / TLS
-- CloudWatch
+\\| Infrastructure | Terraform modules + environment-specific configuration |
 
----
+\\| CI/CD | GitHub Actions + Terraform Plan/Apply |
 
-## Resilience & Availability
+\\| AWS authentication | GitHub OIDC → IAM role |
 
-The platform was designed with resilience in mind rather than treating the application as a single-server deployment.
+\\| State | S3 remote state + native Terraform state locking |
 
-### Multi-AZ application architecture
+\\| FinOps | Infracost |
 
-```text
-                 AWS VPC
-              /           \
-             /             \
-           AZ-A            AZ-B
-            |                |
-         ECS/EC2          ECS/EC2
-         API tasks        API tasks
-            \                /
-             \              /
-                  ALB
-                   |
-                   v
-             RDS PostgreSQL
-                Multi-AZ
-```
+**CI/CD workflow:** `.github/workflows/terraform.yml` generates a Terraform plan when a pull request is opened or updated. `.github/workflows/infracost.yml` generates the Infracost cost report for the proposed infrastructure changes. After the pull request is reviewed and merged, the Terraform pipeline runs **Terraform Apply** to deploy the approved changes.
 
-The ECS service maintains multiple API tasks, while EC2 capacity is provided through an Auto Scaling Group.
+**PR workflow:** **Pull Request → Terraform Plan + Infracost cost report → Review & Merge → Terraform Apply**
 
-```text
-Minimum capacity:   2
-Desired capacity:   2
-Maximum capacity:   4
-```
-
-The ALB uses `/api/health` health checks to route traffic to healthy API targets.
-
-PostgreSQL runs on **Amazon RDS with Multi-AZ enabled**, separating database availability from the application container lifecycle.
-
-The architecture also separates public, private application, and private database tiers, with security groups controlling traffic between layers.
-
----
-
-# Deployment Evidence
-
-The **DEV environment** was successfully deployed and tested on AWS through the CloudFront distribution.
-
-> The DEV environment may be destroyed after testing to avoid unnecessary cloud costs. The screenshots document the deployed DEV environment and its Terraform-managed infrastructure at the time of deployment.
-
-
-![CloudTasks Application](docs/app.png)
-
-Terraform state contained approximately **54 managed resources** for the deployed environment.
-
-![Terraform State List - Part 1](docs/tfstatelist1.png)
-
-![Terraform State List - Part 2](docs/tfstatelist2.png)
-
-![Terraform State List - Part 3](docs/tfstatelist3.png)
-
----
-
-# Production Terraform Plan Evidence
-
-The production environment was initialized and validated independently using its own backend state and variable configuration.
-
-## 1. Production backend
-
-```bash
-terraform init \
-  -reconfigure \
-  -backend-config="key=cloudtasks/prod/terraform.tfstate"
-```
-
-![Terraform production backend initialization](docs/01-terraform-prod-init.png)
-
-## 2. Production plan
-
-```bash
-terraform plan \
-  -var-file=environments/prod.tfvars
-```
-
-![Terraform production plan execution](docs/02-terraform-prod-plan-progress.png)
-
-## 3. Plan result
-
-```text
-Plan: 54 to add, 0 to change, 0 to destroy.
-```
-
-![Terraform production plan result](docs/03-terraform-prod-plan-result.png)
-
-This demonstrates that the production environment can be represented and validated entirely through the Terraform configuration.
-
----
-
-# Infrastructure as Code
-
-**Terraform is the foundation of the platform.**
-
-The AWS infrastructure is defined as reusable modules rather than manually provisioned resources.
-
-```text
-cloudtasks/terraform/
-├── main.tf
-├── variables.tf
-├── outputs.tf
-├── versions.tf
-│
-├── environments/
-│   ├── dev.tfvars
-│   ├── staging.tfvars
-│   └── prod.tfvars
-│
-└── modules/
-    ├── network/
-    ├── security/
-    ├── alb/
-    ├── ecs/
-    ├── database/
-    └── frontend/
-```
-
-| Module | Responsibility |
-|---|---|
-| `network` | VPC, Availability Zones, subnets and routing |
-| `security` | Security groups and network access rules |
-| `alb` | Application Load Balancer and target group |
-| `ecs` | ECS service, EC2 capacity, Auto Scaling and capacity provider |
-| `database` | RDS PostgreSQL |
-| `frontend` | S3 and CloudFront |
-
-Terraform also manages environment-aware naming, common tags, variable validation, remote state, state locking, and infrastructure lifecycle.
-
----
-
-# Multi-Environment Infrastructure
+**\*\*### Multi-environment design\*\***
 
 The same Terraform modules are reused across:
 
-```text
-DEV  →  STAGING  →  PROD
-```
+\\\`\\\`\\\`text
+
+DEV  →  STAGING  →  PROD
+
+\\\`\\\`\\\`
+
+Each environment has independent configuration and remote state:
+
+\\\`\\\`\\\`text
+
+cloudtasks/dev/terraform.tfstate
+
+cloudtasks/staging/terraform.tfstate
+
+cloudtasks/prod/terraform.tfstate
+
+\\\`\\\`\\\`
+
+**\*\*### Platform highlights\*\***
+
+\\- **\*\*\\\*\\\*Reusable Terraform modules\\\*\\\*\*\*** for networking, security, ALB, ECS, database, frontend, and monitoring.
+
+\\- **\*\*\\\*\\\*GitHub OIDC\\\*\\\*\*\*** for short-lived AWS credentials instead of long-lived access keys.
+
+\\- **\*\*\\\*\\\*Plan-before-apply CI/CD\\\*\\\*\*\*** with environment-aware Terraform state.
+
+\\- **\*\*\\\*\\\*CloudWatch monitoring as code\\\*\\\*\*\***, including ECS and ALB health/performance alarms.
+
+\\- **\*\*\\\*\\\*Infracost\\\*\\\*\*\*** for infrastructure cost visibility before deployment.
+
+**## Evidence**
+
+The project includes direct evidence from the GitHub Actions and Terraform workflow, demonstrating **\*\*\\\*\\\*cost visibility and infrastructure changes being reviewed before deployment\\\*\\\*\*\***.
+
+**\*\*### Infracost — Cost Summary\*\***
+
+The pull request receives an automated Infracost report with the estimated monthly infrastructure cost. The captured run reports **\*\*\\\*\\\*53 resources\\\*\\\*\*\***, including **\*\*\\\*\\\*21 costed resources\\\*\\\*\*\***, with an estimated **\*\*\\\*\\\*$151/month\\\*\\\*\*\*** cost for the analyzed environment.
+
+[![Infracost cost summary]\\(docs/pr-rapport-1.jpeg)]\\(docs/pr-rapport-1.jpeg)
+
+**\*\*### Infracost — Resource-Level Cost Breakdown\*\***
+
+The report also exposes the individual resource costs, making the infrastructure spend visible at resource level rather than only providing a single total.
+
+[![Infracost resource-level costs]\\(docs/pr-rapport-2.jpeg)]\\(docs/pr-rapport-2.jpeg)
+
+**\*\*### Terraform Plan — Pull Request Review\*\***
+
+Terraform changes are appended directly to the pull request before deployment. The example below shows the **\*\*\\\*\\\*DEV environment\\\*\\\*\*\***, its isolated remote state, and the planned ECS capacity change reviewed by GitHub Actions.
+
+[![Terraform plan appended to pull request]\\(docs/pr-rapport-3.jpeg)]\\(docs/pr-rapport-3.jpeg)
+
+**\*\*### Example of CloudWatch set through the pipeline&#x20;\*\***
+
+**\*\*CloudWatch alarms are managed as Terraform code and deployed through the infrastructure pipeline after PR review and merge.\*\***
+
+[![CloudWatch Terraform apply]\\(docs/cloudwatch-apply-success.png)]\\(docs/cloudwatch-apply-success.png)
+
+**\*\*### Terraform State — 61 Managed Resources\*\***
+
+After integrating the CloudWatch monitoring layer, the DEV Terraform state contains **\*\*\\\*\\\*61 managed resources\\\*\\\*\*\***, demonstrating that the monitoring additions were incorporated into the existing infrastructure rather than deployed separately.
+
+[![Terraform state showing 61 managed resources]\\(docs/state-after-cw\\.png)]\\(docs/state-after-cw\\.png)
+
+**\*\*### DEV Environment — Live AWS Deployment\*\***
+
+The **\*\*\\\*\\\*DEV environment\\\*\\\*\*\*** was successfully deployed and tested on AWS through the CloudFront distribution.
+
+\\> The DEV environment may be destroyed after testing to avoid unnecessary cloud costs. The screenshot documents the deployed DEV environment and its Terraform-managed infrastructure at the time of deployment.
+
+![CloudTasks Application]\\(docs/app.png)
+
+**## Infrastructure as Code**
+
+Terraform is the foundation of the platform. AWS networking, security, load balancing, ECS capacity, database, frontend delivery, and monitoring are defined through reusable modules and environment-specific configuration.
+
+\\\`\\\`\\\`text
+
+cloudtasks/terraform/
+
+├── environments/
+
+│   ├── dev.tfvars
+
+│   ├── staging.tfvars
+
+│   └── prod.tfvars
+
+└── modules/
+
+    ├── network/
+
+    ├── security/
+
+    ├── alb/
+
+    ├── ecs/
+
+    ├── database/
+
+    ├── frontend/
+
+    └── monitoring/
+
+\\\`\\\`\\\`
+
+**## Multi-Environment Infrastructure**
+
+The same Terraform modules are reused across:
+
+\\\`\\\`\\\`text
+
+DEV  →  STAGING  →  PROD
+
+\\\`\\\`\\\`
 
 Each environment has its own configuration:
 
-```text
+\\\`\\\`\\\`text
+
 environments/
+
 ├── dev.tfvars
+
 ├── staging.tfvars
+
 └── prod.tfvars
-```
+
+\\\`\\\`\\\`
 
 and its own remote state:
 
-```text
+\\\`\\\`\\\`text
+
 cloudtasks/dev/terraform.tfstate
+
 cloudtasks/staging/terraform.tfstate
+
 cloudtasks/prod/terraform.tfstate
-```
 
-### State vs. configuration
+\\\`\\\`\\\`
 
-```text
+**\*\*### State vs. configuration\*\***
+
+\\\`\\\`\\\`text
+
 -backend-config="key=..."
-        |
-        +--> selects remote Terraform state
+
+        |
+
+        +--> selects remote Terraform state
 
 -var-file=environments/...
-        |
-        +--> selects environment configuration
-```
+
+        |
+
+        +--> selects environment configuration
+
+\\\`\\\`\\\`
 
 Example:
 
-```bash
-terraform init \
-  -reconfigure \
-  -backend-config="key=cloudtasks/dev/terraform.tfstate"
+\\\`\\\`\\\`bash
 
-terraform plan \
-  -var-file=environments/dev.tfvars
-```
+terraform init \\\\
 
----
+  -reconfigure \\\\
 
-# Application
+  -backend-config="key=cloudtasks/staging/terraform.tfstate"
 
-## Frontend
+terraform plan \\\\
+
+  -var-file=environments/staging.tfvars
+
+\\\`\\\`\\\`
+
+**\*\*---\*\***
+
+**## Application**
+
+**\*\*## Frontend\*\***
 
 The frontend is a React/Vite application.
 
-```bash
+\\\`\\\`\\\`bash
+
 cd cloudtasks/frontend
+
 npm install
+
 npm run dev
-```
+
+\\\`\\\`\\\`
 
 Create a production build:
 
-```bash
+\\\`\\\`\\\`bash
+
 npm run build
-```
+
+\\\`\\\`\\\`
 
 The build is generated in:
 
-```text
+\\\`\\\`\\\`text
+
 cloudtasks/frontend/dist/
-```
+
+\\\`\\\`\\\`
 
 Terraform deploys these assets to S3 for CloudFront delivery.
 
-## Backend
+**\*\*## Backend\*\***
 
-The backend is a **Node.js/Express REST API packaged as a Docker image**.
+The backend is a **\*\*\\\*\\\*Node.js/Express REST API packaged as a Docker image\\\*\\\*\*\***.
 
 AWS uses the public pre-built image:
 
-```text
+\\\`\\\`\\\`text
+
 vanbasten01/cloudtasks-api:1.1
-```
+
+\\\`\\\`\\\`
 
 No backend image build is required for the Terraform deployment.
 
 The ECS task receives:
 
-```text
+\\\`\\\`\\\`text
+
 PORT
+
 DB_HOST
+
 DB_PORT
+
 DB_NAME
+
 DB_USER
+
 DB_PASSWORD
-```
 
-For local development, configuration is supplied through `.env` based on `.env.example`.
+\\\`\\\`\\\`
 
-## Database
+For local development, configuration is supplied through \\\`.env\\\` based on \\\`.env.example\\\`.
+
+**\*\*## Database\*\***
 
 PostgreSQL is the persistent data layer.
 
-```text
-Local development  → Docker Compose
-AWS deployment     → Amazon RDS PostgreSQL
-```
+\\\`\\\`\\\`text
 
----
+Local development  → Docker Compose
 
-# Clone & Run Locally
+AWS deployment     → Amazon RDS PostgreSQL
+
+\\\`\\\`\\\`
+
+**\*\*---\*\***
+
+**## Clone & Run Locally**
 
 Clone the repository:
 
-```bash
-git clone https://github.com/fouadyasin01/platform-labs.git
+\\\`\\\`\\\`bash
+
+git clone https\\://github.com/fouadyasin01/platform-labs.git
+
 cd platform-labs/cloudtasks
-```
+
+\\\`\\\`\\\`
 
 Start PostgreSQL:
 
-```bash
+\\\`\\\`\\\`bash
+
 docker compose up -d
+
 docker compose ps
-```
+
+\\\`\\\`\\\`
 
 Run the frontend:
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+\\\`\\\`\\\`bash
 
-For local backend development, use the project's `.env.example` as the template for `.env`.
+cd frontend
+
+npm install
+
+npm run dev
+
+\\\`\\\`\\\`
+
+For local backend development, use the project's \\\`.env.example\\\` as the template for \\\`.env\\\`.
 
 The published AWS backend image is:
 
-```text
+\\\`\\\`\\\`text
+
 vanbasten01/cloudtasks-api:1.1
-```
+
+\\\`\\\`\\\`
 
 Test the API health endpoint:
 
-```bash
-curl http://localhost:3000/api/health
-```
+\\\`\\\`\\\`bash
 
----
+curl http\\://localhost:3000/api/health
 
-# Terraform Deployment
+\\\`\\\`\\\`
+
+**\*\*---\*\***
+
+**## Terraform Deployment**
+
+**\*\*## Clone & Run Locally\*\***
+
+Clone the repository:
+
+\\\`\\\`\\\`bash
+
+git clone https\\://github.com/fouadyasin01/platform-labs.git
+
+cd platform-labs/cloudtasks
+
+\\\`\\\`\\\`
+
+Run the frontend:
+
+\\\`\\\`\\\`bash
+
+cd cloudtasks/frontend
+
+npm install
+
+npm run dev
+
+\\\`\\\`\\\`
 
 From the Terraform directory:
 
-```bash
+\\\`\\\`\\\`bash
+
 cd cloudtasks/terraform
-```
 
-Configure the selected `.tfvars` file with the required values. Do not commit real credentials or secrets.
+\\\`\\\`\\\`
 
-### Initialize
+Configure the selected \\\`.tfvars\\\` file with the required values. Do not commit real credentials or secrets.
 
-```bash
-terraform init \
-  -reconfigure \
-  -backend-config="key=cloudtasks/dev/terraform.tfstate"
-```
+**\*\*### Initialize\*\***
 
-### Plan
+\\\`\\\`\\\`bash
 
-```bash
-terraform plan \
-  -var-file=environments/dev.tfvars
-```
+terraform init \\\\
 
-### Apply
+  -reconfigure \\\\
 
-```bash
-terraform apply \
-  -var-file=environments/dev.tfvars
-```
+  -backend-config="key=cloudtasks/dev/terraform.tfstate"
 
-Replace `dev` with `staging` or `prod` when required.
+\\\`\\\`\\\`
 
-### Destroy
+**\*\*### Plan\*\***
+
+\\\`\\\`\\\`bash
+
+terraform plan \\\\
+
+  -var-file=environments/dev.tfvars
+
+\\\`\\\`\\\`
+
+**\*\*### Apply\*\***
+
+\\\`\\\`\\\`bash
+
+terraform apply \\\\
+
+  -var-file=environments/dev.tfvars
+
+\\\`\\\`\\\`
+
+Replace \\\`dev\\\` with \\\`staging\\\` or \\\`prod\\\` when required.
+
+**\*\*### Destroy\*\***
 
 Always reconfigure the backend to the target environment before destroying it:
 
-```bash
-terraform init \
-  -reconfigure \
-  -backend-config="key=cloudtasks/dev/terraform.tfstate"
+\\\`\\\`\\\`bash
 
-terraform destroy \
-  -var-file=environments/dev.tfvars
-```
+terraform init \\\\
+
+  -reconfigure \\\\
+
+  -backend-config="key=cloudtasks/dev/terraform.tfstate"
+
+terraform destroy \\\\
+
+  -var-file=environments/dev.tfvars
+
+\\\`\\\`\\\`
 
 This prevents accidentally operating against the wrong environment's state.
 
----
+**\*\*---\*\***
 
-# Project Structure
+**## Project Structure**
 
-```text
+\\\`\\\`\\\`text
+
 cloudtasks/
+
 ├── backend/
-│   ├── src/
-│   ├── package.json
-│   └── ...
+
+│   ├── src/
+
+│   ├── package.json
+
+│   └── ...
+
 │
+
 ├── frontend/
-│   ├── src/
-│   ├── package.json
-│   └── ...
+
+│   ├── src/
+
+│   ├── package.json
+
+│   └── ...
+
 │
+
 ├── docker-compose.yml
+
 │
+
 └── terraform/
-    ├── main.tf
-    ├── variables.tf
-    ├── outputs.tf
-    ├── versions.tf
-    ├── environments/
-    │   ├── dev.tfvars
-    │   ├── staging.tfvars
-    │   └── prod.tfvars
-    │
-    └── modules/
-        ├── network/
-        ├── security/
-        ├── alb/
-        ├── ecs/
-        ├── database/
-        └── frontend/
-```
 
----
+    ├── main.tf
 
-# What This Project Demonstrates
+    ├── variables.tf
 
-### Application Engineering
+    ├── outputs.tf
+
+    ├── versions.tf
+
+    ├── environments/
+
+    │   ├── dev.tfvars
+
+    │   ├── staging.tfvars
+
+    │   └── prod.tfvars
+
+    │
+
+    └── modules/
+
+        ├── network/
+
+        ├── security/
+
+        ├── alb/
+
+        ├── ecs/
+
+        ├── database/
+
+        └── frontend/
+
+        └── monitoring/
+
+\\\`\\\`\\\`
+
+**\*\*---\*\***
+
+**## What This Project Demonstrates**
+
+**\*\*### Application Engineering\*\***
 
 React · Vite · Node.js · Express · REST API · PostgreSQL · Docker
 
-### AWS Architecture
+**\*\*### AWS Architecture\*\***
 
 VPC · Multi-AZ networking · Public/private subnet segmentation · ALB · ECS on EC2 · EC2 Auto Scaling · ECS capacity providers · RDS PostgreSQL Multi-AZ · S3 · CloudFront · IAM · ACM · CloudWatch
 
-### Infrastructure as Code
+**\*\*### Infrastructure as Code\*\***
 
 Terraform · Reusable modules · Environment-specific configuration · Variable validation · Remote S3 state · State locking · Environment isolation · Infrastructure lifecycle management
 
----
+**\*\*---\*\***
 
-## Project Focus
+**## Project Focus**
 
-> **Build the platform around the application.**
+\\> **\*\*\\\*\\\*Build the platform around the application.\\\*\\\*\*\***
 
-CloudTasks demonstrates how a full-stack application can be turned into a **reproducible, multi-environment AWS platform**.
+CloudTasks demonstrates how a full-stack application can be turned into a **\*\*\\\*\\\*reproducible, multi-environment AWS platform\\\*\\\*\*\***.
 
 The application layers are backed by infrastructure providing:
 
-- multi-AZ deployment
-- redundant application capacity
-- health-based traffic routing
-- EC2 scaling
-- managed database availability
-- private application and database tiers
-- environment-specific Terraform state
-- reproducible infrastructure through IaC
+\\- multi-AZ deployment
 
-The result is a project where both the **application and the platform required to operate it are designed, provisioned, and managed as code**.
+\\- redundant application capacity
+
+\\- health-based traffic routing
+
+\\- EC2 scaling
+
+\\- managed database availability
+
+\\- private application and database tiers
+
+\\- environment-specific Terraform state
+
+\\- reproducible infrastructure through IaC
+
+\\- cloudwatch alarm set for monitoring&#x20;
+
+The result is a project where both the **\*\*\\\*\\\*application and the platform required to operate it are designed, provisioned, and managed as code\\\*\\\*\*\***.
