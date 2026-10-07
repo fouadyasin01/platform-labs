@@ -66,6 +66,9 @@ resource "aws_instance" "app" {
     db_js        = file("${path.module}/../app/api/db.js")
     server_js    = file("${path.module}/../app/api/server.js")
     schema_sql   = file("${path.module}/../app/api/schema.sql")
+
+    database_host     = aws_db_instance.database.address
+    database_password = var.database_password
   })
 
   tags = {

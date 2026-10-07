@@ -67,3 +67,39 @@ variable "app_instance_type" {
   type        = string
   default     = "t3.micro"
 }
+
+# PostgreSQL engine version for the application database.
+variable "database_engine_version" {
+  description = "PostgreSQL engine version"
+  type        = string
+  default     = "16"
+}
+
+# RDS instance class for the application database.
+variable "database_instance_class" {
+  description = "RDS instance class for the database"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+/*
+# Initial application database name.
+variable "database_name" {
+  description = "Name of the application database"
+  type        = string
+  default     = "appdb"
+}
+
+# Master username for PostgreSQL.
+variable "database_username" {
+  description = "Master username for the PostgreSQL database"
+  type        = string
+  default     = "appadmin"
+}
+*/
+# Master password supplied securely through Terraform variables.
+variable "database_password" {
+  description = "Master password for the PostgreSQL database"
+  type        = string
+  sensitive   = true
+}
