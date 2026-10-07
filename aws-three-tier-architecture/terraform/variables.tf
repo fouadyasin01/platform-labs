@@ -53,3 +53,17 @@ variable "database_subnet_cidrs" {
   type        = list(string)
   default     = ["10.0.31.0/24", "10.0.32.0/24"]
 }
+
+# EC2 instance type for the Nginx web tier.
+variable "web_instance_type" {
+  description = "EC2 instance type for the web tier"
+  type        = string
+  default     = "t3.micro"
+}
+
+# EC2 instance type for the Node.js application tier.
+variable "app_instance_type" {
+  description = "EC2 instance type for the application tier"
+  type        = string
+  default     = "t3.micro"
+}
