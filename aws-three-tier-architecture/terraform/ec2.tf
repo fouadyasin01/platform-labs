@@ -23,7 +23,7 @@ data "aws_ami" "amazon_linux" {
 # Internet traffic reaches them only through the public ALB.
 resource "aws_instance" "web" {
   count = 2
-
+  iam_instance_profile = aws_iam_instance_profile.ec2_ssm.name
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.web_instance_type
   subnet_id     = aws_subnet.web[count.index].id
@@ -52,7 +52,7 @@ resource "aws_instance" "web" {
 # They are reachable only through the internal application ALB.
 resource "aws_instance" "app" {
   count = 2
-
+  iam_instance_profile = aws_iam_instance_profile.ec2_ssm.name
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.app_instance_type
   subnet_id     = aws_subnet.app[count.index].id
@@ -75,4 +75,22 @@ resource "aws_instance" "app" {
     Name = "${var.project_name}-${var.environment}-app-${count.index + 1}"
     Tier = "application"
   }
+}
+
+# Register each Nginx instance with the public web target group.
+resource "aws_lb_target_group_attachment" "web" {
+  count = 2
+
+  target_group_arn = aws_lb_target_group.web.arn
+  target_id        = aws_instance.web[count.index].id
+  port             = 80
+}
+
+# Register each Node.js instance with the internal application target group.
+resource "aws_lb_target_group_attachment" "app" {
+  count = 2
+
+  target_group_arn = aws_lb_target_group.app.arn
+  target_id        = aws_instance.app[count.index].id
+  port             = 3000
 }

@@ -10,7 +10,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://${APP_ALB_DNS}:3000;
+        proxy_pass http://${APP_ALB_DNS};
 
         proxy_http_version 1.1;
 

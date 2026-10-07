@@ -102,4 +102,5 @@ variable "database_password" {
   description = "Master password for the PostgreSQL database"
   type        = string
   sensitive   = true
+  default     = "db_password" # Replace with a secure password in production
 }
