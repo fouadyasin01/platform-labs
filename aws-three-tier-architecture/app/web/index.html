@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AWS Three-Tier Application</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Inter, Arial, sans-serif;
+            background: #f4f7fb;
+            color: #172033;
+        }
+
+        header {
+            background: #172033;
+            color: white;
+            padding: 32px 20px;
+        }
+
+        .header-content {
+            max-width: 1100px;
+            margin: auto;
+        }
+
+        header h1 {
+            margin: 0 0 8px;
+            font-size: 30px;
+        }
+
+        header p {
+            margin: 0;
+            color: #b9c2d0;
+        }
+
+        main {
+            max-width: 1100px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .architecture {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin-bottom: 30px;
+        }
+
+        .architecture-card {
+            background: white;
+            border: 1px solid #e1e6ef;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+
+        .architecture-card h3 {
+            margin: 0 0 8px;
+        }
+
+        .architecture-card p {
+            margin: 0;
+            color: #687386;
+        }
+
+        .status-card {
+            background: white;
+            border: 1px solid #e1e6ef;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 25px;
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .status-header h2 {
+            margin: 0;
+        }
+
+        .status {
+            padding: 7px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .healthy {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .unhealthy {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .loading {
+            background: #e5e7eb;
+            color: #4b5563;
+        }
+
+        .table-card {
+            background: white;
+            border: 1px solid #e1e6ef;
+            border-radius: 10px;
+            padding: 24px;
+            overflow-x: auto;
+        }
+
+        .table-card h2 {
+            margin-top: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 14px 16px;
+            border-bottom: 1px solid #e8ecf2;
+        }
+
+        th {
+            background: #f8fafc;
+            color: #475569;
+            font-size: 14px;
+        }
+
+        td {
+            color: #334155;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .active {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .inactive {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+
+        .error {
+            color: #b91c1c;
+            padding: 15px 0;
+        }
+
+        footer {
+            text-align: center;
+            color: #7b8494;
+            font-size: 14px;
+            padding: 30px 20px;
+        }
+
+        @media (max-width: 700px) {
+            .architecture {
+                grid-template-columns: 1fr;
+            }
+
+            .status-header {
+                align-items: flex-start;
+                gap: 10px;
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <div class="header-content">
+        <h1>AWS Three-Tier Application</h1>
+        <p>Highly available web, application, and database architecture</p>
+    </div>
+</header>
+
+<main>
+
+    <section class="architecture">
+
+        <div class="architecture-card">
+            <h3>Web Tier</h3>
+            <p>Nginx running on private EC2 instances.</p>
+        </div>
+
+        <div class="architecture-card">
+            <h3>Application Tier</h3>
+            <p>Node.js API behind an internal Application Load Balancer.</p>
+        </div>
+
+        <div class="architecture-card">
+            <h3>Database Tier</h3>
+            <p>PostgreSQL running on Amazon RDS with Multi-AZ.</p>
+        </div>
+
+    </section>
+
+    <section class="status-card">
+
+        <div class="status-header">
+            <h2>Application Health</h2>
+
+            <span id="health-status" class="status loading">
+                Checking...
+            </span>
+        </div>
+
+        <p id="health-details">
+            Checking application and database connectivity...
+        </p>
+
+    </section>
+
+    <section class="table-card">
+
+        <h2>Patient Records</h2>
+
+        <p>
+            Records retrieved from the PostgreSQL database through the
+            Node.js application tier.
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody id="patients-table">
+                <tr>
+                    <td colspan="3">Loading patient records...</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div id="patients-error" class="error"></div>
+
+    </section>
+
+</main>
+
+<footer>
+    AWS Three-Tier Architecture · Nginx · Node.js · PostgreSQL
+</footer>
+
+<script>
+    async function loadHealth() {
+        const statusElement = document.getElementById("health-status");
+        const detailsElement = document.getElementById("health-details");
+
+        try {
+            const response = await fetch("/api/health");
+
+            if (!response.ok) {
+                throw new Error("Health check failed");
+            }
+
+            const data = await response.json();
+
+            if (data.status === "healthy") {
+                statusElement.textContent = "Healthy";
+                statusElement.className = "status healthy";
+
+                detailsElement.textContent =
+                    "Application tier and database connection are operational.";
+            } else {
+                statusElement.textContent = "Unhealthy";
+                statusElement.className = "status unhealthy";
+
+                detailsElement.textContent =
+                    "The application is running but the database is unavailable.";
+            }
+
+        } catch (error) {
+            statusElement.textContent = "Unavailable";
+            statusElement.className = "status unhealthy";
+
+            detailsElement.textContent =
+                "Unable to reach the application tier.";
+        }
+    }
+
+    async function loadPatients() {
+        const table = document.getElementById("patients-table");
+        const errorElement = document.getElementById("patients-error");
+
+        try {
+            const response = await fetch("/api/patients");
+
+            if (!response.ok) {
+                throw new Error("Failed to retrieve patients");
+            }
+
+            const patients = await response.json();
+
+            table.innerHTML = "";
+
+            patients.forEach(patient => {
+                const row = document.createElement("tr");
+
+                const statusClass =
+                    patient.status === "active"
+                        ? "active"
+                        : "inactive";
+
+                row.innerHTML = `
+                    <td>${patient.id}</td>
+                    <td>${patient.name}</td>
+                    <td>
+                        <span class="badge ${statusClass}">
+                            ${patient.status}
+                        </span>
+                    </td>
+                `;
+
+                table.appendChild(row);
+            });
+
+        } catch (error) {
+            table.innerHTML = "";
+
+            errorElement.textContent =
+                "Unable to retrieve patient records.";
+        }
+    }
+
+    async function loadApplication() {
+        await Promise.all([
+            loadHealth(),
+            loadPatients()
+        ]);
+    }
+
+    loadApplication();
+</script>
+
+</body>
+</html>
