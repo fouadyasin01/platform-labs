@@ -1,0 +1,58 @@
+#!/bin/bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for outbound connectivity through the NAT Gateway.
+for attempt in {1..12}; do
+  if curl -fsS --connect-timeout 5 http://azure.archive.ubuntu.com/ubuntu/ >/dev/null; then
+    break
+  fi
+
+  if [ "$attempt" -eq 12 ]; then
+    echo "Unable to reach Ubuntu package repositories"
+    exit 1
+  fi
+
+  sleep 10
+done
+
+apt-get update
+
+# Install Nginx with retries.
+for attempt in {1..5}; do
+  if apt-get install -y nginx; then
+    break
+  fi
+
+  if [ "$attempt" -eq 5 ]; then
+    echo "Failed to install nginx after multiple attempts"
+    exit 1
+  fi
+
+  apt-get update
+  sleep 10
+done
+
+# Copy the application frontend.
+mkdir -p /usr/share/nginx/html
+
+cat > /usr/share/nginx/html/index.html <<'HTML'
+${index_html}
+HTML
+
+# Copy the generated Nginx configuration.
+cat > /etc/nginx/conf.d/three-tier.conf <<'NGINX'
+${nginx_conf}
+NGINX
+
+# Remove the default Nginx site.
+rm -f /etc/nginx/sites-enabled/default
+
+# Validate and start Nginx.
+nginx -t
+
+systemctl enable nginx
+systemctl restart nginx
+
+systemctl is-active --quiet nginx
