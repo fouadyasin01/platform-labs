@@ -1,0 +1,75 @@
+#!/bin/bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install -y ca-certificates curl gnupg postgresql-client
+
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+
+apt-get install -y nodejs
+
+mkdir -p /opt/three-tier-api
+
+cat > /opt/three-tier-api/package.json <<'JSON'
+${package_json}
+JSON
+
+cat > /opt/three-tier-api/db.js <<'JS'
+${db_js}
+JS
+
+cat > /opt/three-tier-api/server.js <<'JS'
+${server_js}
+JS
+
+cat > /opt/three-tier-api/schema.sql <<'SQL'
+${schema_sql}
+SQL
+
+cd /opt/three-tier-api
+
+npm install --omit=dev
+
+# Configure database connection for the application.
+cat > /etc/three-tier-api.env <<'ENV'
+DB_HOST=${database_host}
+DB_PORT=5432
+DB_NAME=appdb
+DB_USER=appadmin
+DB_PASSWORD=${database_password}
+DB_SSL=true
+ENV
+
+chmod 600 /etc/three-tier-api.env
+
+# Initialize the PostgreSQL database using the repository schema.
+export PGHOST="${database_host}"
+export PGPORT="5432"
+export PGDATABASE="appdb"
+export PGUSER="appadmin"
+export PGPASSWORD="${database_password}"
+
+psql -f /opt/three-tier-api/schema.sql
+
+cat > /etc/systemd/system/three-tier-api.service <<'SERVICE'
+[Unit]
+Description=Three-Tier Node.js API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/three-tier-api
+EnvironmentFile=/etc/three-tier-api.env
+ExecStart=/usr/bin/node /opt/three-tier-api/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable three-tier-api
+systemctl restart three-tier-api
