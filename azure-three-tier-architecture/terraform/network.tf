@@ -47,12 +47,14 @@ resource "azurerm_subnet" "db" {
   }
 }
 
+# NAT Gateway provides outbound internet access for private subnets.
 resource "azurerm_public_ip" "nat" {
   name                = "${var.project_name}-${var.environment}-nat-pip"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
+
+  allocation_method = "Static"
+  sku               = "Standard"
 
   tags = {
     Project     = var.project_name
@@ -62,9 +64,10 @@ resource "azurerm_public_ip" "nat" {
 }
 
 resource "azurerm_nat_gateway" "main" {
-  name                    = "${var.project_name}-${var.environment}-nat"
-  location                = azurerm_resource_group.main.location
-  resource_group_name     = azurerm_resource_group.main.name
+  name                = "${var.project_name}-${var.environment}-nat"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
   sku_name                = "Standard"
   idle_timeout_in_minutes = 10
 
@@ -80,6 +83,7 @@ resource "azurerm_nat_gateway_public_ip_association" "main" {
   public_ip_address_id = azurerm_public_ip.nat.id
 }
 
+# Private web and application subnets use the NAT Gateway for outbound access.
 resource "azurerm_subnet_nat_gateway_association" "web" {
   subnet_id      = azurerm_subnet.web.id
   nat_gateway_id = azurerm_nat_gateway.main.id

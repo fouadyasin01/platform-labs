@@ -45,9 +45,13 @@ resource "azurerm_application_gateway" "main" {
     name = "http"
     port = 80
   }
-
   backend_address_pool {
     name = "web-backend-pool"
+
+    ip_addresses = [
+      azurerm_network_interface.web[0].private_ip_address,
+      azurerm_network_interface.web[1].private_ip_address
+    ]
   }
 
   backend_http_settings {

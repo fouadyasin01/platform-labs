@@ -10,7 +10,7 @@ variable "environment" {
 
 variable "location" {
   type    = string
-  default = "West Europe"
+  default = "Spain Central"
 }
 
 variable "admin_username" {
@@ -21,9 +21,11 @@ variable "admin_username" {
 variable "ssh_public_key" {
   type      = string
   sensitive = true
+  default   = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMJI2dBSJicQ5hbW2kWCvYjDAp0dBh3oARQc1wRgLrqJ fouad@platform"
 }
 
 variable "database_password" {
   type      = string
   sensitive = true
+  default   = "db_password" # Replace with a secure password in production
 }
