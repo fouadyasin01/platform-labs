@@ -48,10 +48,17 @@ resource "azurerm_application_gateway" "main" {
   backend_address_pool {
     name = "web-backend-pool"
 
-    ip_addresses = [
+   ip_addresses = [
       azurerm_network_interface.web[0].private_ip_address,
       azurerm_network_interface.web[1].private_ip_address
     ]
+
+
+/*
+    ip_addresses = [
+      azurerm_network_interface.web.private_ip_address
+    ]
+*/
   }
 
   backend_http_settings {
@@ -139,7 +146,7 @@ resource "azurerm_lb_rule" "app" {
   name                           = "app-api"
   loadbalancer_id                = azurerm_lb.internal.id
   protocol                       = "Tcp"
-  frontend_port                  = 3000
+  frontend_port                  = 80
   backend_port                   = 3000
   frontend_ip_configuration_name = "app-frontend"
   backend_address_pool_ids       = [azurerm_lb_backend_address_pool.app.id]

@@ -2,6 +2,7 @@
 resource "azurerm_network_interface" "web" {
   count               = 2
   name                = "${var.project_name}-${var.environment}-web-nic-${count.index + 1}"
+  #name                = "${var.project_name}-${var.environment}-web-nic"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
@@ -13,6 +14,7 @@ resource "azurerm_network_interface" "web" {
 
   tags = {
     Name = "${var.project_name}-${var.environment}-web-nic-${count.index + 1}"
+    #Name = "${var.project_name}-${var.environment}-web-nic"
     Tier = "web"
   }
 }
@@ -20,6 +22,7 @@ resource "azurerm_network_interface" "web" {
 resource "azurerm_linux_virtual_machine" "web" {
   count               = 2
   name                = "${var.project_name}-${var.environment}-web-${count.index + 1}"
+  #name                = "${var.project_name}-${var.environment}-web"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   size                = "Standard_B2s"
@@ -28,6 +31,7 @@ resource "azurerm_linux_virtual_machine" "web" {
 
   network_interface_ids = [
     azurerm_network_interface.web[count.index].id
+   #azurerm_network_interface.web.id
   ]
 
   disable_password_authentication = true
@@ -57,13 +61,14 @@ resource "azurerm_linux_virtual_machine" "web" {
       nginx_conf = replace(
         file("${path.module}/../app/web/nginx.conf.template"),
         "$${APP_ALB_DNS}",
-        "${azurerm_lb.internal.frontend_ip_configuration[0].private_ip_address}:3000"
+        "${azurerm_lb.internal.frontend_ip_configuration[0].private_ip_address}"
       )
     }
   ))
 
   tags = {
     Name = "${var.project_name}-${var.environment}-web-${count.index + 1}"
+    #Name = "${var.project_name}-${var.environment}-web"
     Tier = "web"
   }
 }
