@@ -24,45 +24,6 @@ The deployment includes:
 
 ![AWS Three-Tier Architecture](docs/architecture-diagram.png)
 
-### Network Layout
-
-| Tier | Availability Zone 1 | Availability Zone 2 |
-|---|---|---|
-| Public | `10.0.1.0/24` | `10.0.2.0/24` |
-| Private Web | `10.0.11.0/24` | `10.0.12.0/24` |
-| Private App | `10.0.21.0/24` | `10.0.22.0/24` |
-| Isolated Database | `10.0.31.0/24` | `10.0.32.0/24` |
-
-The VPC uses the `10.0.0.0/16` CIDR range.
-
-### Request Flow
-
-```text
-Internet
-   |
-   | HTTP :80
-   v
-Public Application Load Balancer
-   |
-   | HTTP :80
-   v
-Nginx Web Tier
-   |
-   | HTTP :80
-   v
-Internal Application Load Balancer
-   |
-   | HTTP :3000
-   v
-Node.js Application Tier
-   |
-   | PostgreSQL :5432 (SSL/TLS)
-   v
-Amazon RDS PostgreSQL
-```
-
-The public ALB is the only internet-facing application component. The web and application servers run in private subnets, while the database is deployed in isolated subnets without a default Internet route.
-
 ## Deployment Verification
 
 The infrastructure was successfully deployed to AWS with Terraform and the application was verified through the public Application Load Balancer.
@@ -162,6 +123,46 @@ When the environment is no longer required:
 ```bash
 terraform destroy
 ```
+
+### Network Layout
+
+| Tier | Availability Zone 1 | Availability Zone 2 |
+|---|---|---|
+| Public | `10.0.1.0/24` | `10.0.2.0/24` |
+| Private Web | `10.0.11.0/24` | `10.0.12.0/24` |
+| Private App | `10.0.21.0/24` | `10.0.22.0/24` |
+| Isolated Database | `10.0.31.0/24` | `10.0.32.0/24` |
+
+The VPC uses the `10.0.0.0/16` CIDR range.
+
+### Request Flow
+
+```text
+Internet
+   |
+   | HTTP :80
+   v
+Public Application Load Balancer
+   |
+   | HTTP :80
+   v
+Nginx Web Tier
+   |
+   | HTTP :80
+   v
+Internal Application Load Balancer
+   |
+   | HTTP :3000
+   v
+Node.js Application Tier
+   |
+   | PostgreSQL :5432 (SSL/TLS)
+   v
+Amazon RDS PostgreSQL
+```
+
+The public ALB is the only internet-facing application component. The web and application servers run in private subnets, while the database is deployed in isolated subnets without a default Internet route.
+
 
 ## Design Choice
 
