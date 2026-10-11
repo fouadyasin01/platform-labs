@@ -1,0 +1,20 @@
+services:
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+
+  api:
+    volumes:
+      - ./api:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+    ports:
+      - "8080:8080"
+      - "9230:9230"
