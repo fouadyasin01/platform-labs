@@ -1,5 +1,9 @@
 # Developer Guide
 
+## Architecture
+
+See the project [README](README.md) for the architecture diagram and an overview of the Docker Compose services and their communication.
+
 ## Prerequisites
 
 - Docker
