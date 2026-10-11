@@ -4,7 +4,7 @@
 
 This project demonstrates the hardening of a Node.js container image by comparing an intentionally naive baseline image with a production-oriented optimized image.
 
-The optimized image uses a pinned Alpine-based Node.js image, a multi-stage build, production-only dependencies, a non-root application user, a `.dockerignore`, runtime package cleanup, Alpine security updates, and a Docker HEALTHCHECK.
+The optimized image uses a digest-pinned Alpine-based Node.js image, a multi-stage build, production-only dependencies, a non-root application user, a `.dockerignore`, runtime package cleanup, Alpine security updates, and a Docker HEALTHCHECK.
 
 ## 1. Estimated Image Size Reduction
 
@@ -160,7 +160,7 @@ A vulnerability without an available fix should therefore be handled as a docume
 
 The optimized image implements:
 
-- Pinned Alpine-based Node.js image instead of `node:latest`
+- Digest-pinned Alpine-based Node.js image instead of `node:latest`
 - Multi-stage Docker build
 - Production-only dependencies
 - Removal of npm and Corepack from the runtime image

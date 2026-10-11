@@ -1,5 +1,4 @@
-FROM node:22-alpine3.22 AS dependencies
-
+FROM node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS dependencies
 WORKDIR /app
 
 COPY app/package*.json ./
@@ -7,8 +6,7 @@ COPY app/package*.json ./
 RUN npm ci --omit=dev
 
 
-FROM node:22-alpine3.22 AS runtime
-
+FROM node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
