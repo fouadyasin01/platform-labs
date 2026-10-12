@@ -1,0 +1,92 @@
+services:
+  mongodb:
+    image: mongo:8
+    container_name: chat-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    volumes:
+      - mongodb-data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chat-network
+
+  redis:
+    image: redis:8-alpine
+    container_name: chat-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chat-network
+
+  rest-api:
+    build:
+      context: .
+      dockerfile: rest-api/Dockerfile
+    container_name: chat-rest-api
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+    ports:
+      - "3001:3001"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chat-network
+
+  websocket:
+    build:
+      context: .
+      dockerfile: websocket/Dockerfile
+    container_name: chat-websocket
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+    ports:
+      - "3002:3002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - chat-network
+
+  nginx:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: chat-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      rest-api:
+        condition: service_started
+      websocket:
+        condition: service_started
+    networks:
+      - chat-network
+
+volumes:
+  mongodb-data:
+
+networks:
+  chat-network:
+    driver: bridge
