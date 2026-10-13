@@ -9,3 +9,5 @@ MarkupSafe==3.0.4
 pymongo==4.18.3
 redis==8.1.0
 Werkzeug==3.1.9
+gunicorn==23.0.0
+
