@@ -1,0 +1,249 @@
+name: Chat Microservices CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/chat-microservices"
+    paths:
+      - "chat-microservices/**"
+      - ".github/workflows/chat-microservices-ci.yml"
+
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Select the microservice to build"
+        required: true
+        type: choice
+        options:
+          - all
+          - rest-api
+          - websocket
+          - api-gateway
+        default: api-gateway
+
+# Prevent concurrent releases from calculating the same version.
+concurrency:
+  group: chat-microservices-image-publishing
+  queue: max
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_PREFIX: vanbasten01
+
+jobs:
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+
+    outputs:
+      services: ${{ steps.select.outputs.services }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect service changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # For push events, compare against the previous commit
+          # on the same branch. Manual runs use the main branch
+          # as the comparison base, but service selection below
+          # comes from the workflow_dispatch input.
+          base: ${{ github.event_name == 'push' && github.ref || 'main' }}
+          filters: |
+            rest-api:
+              - "chat-microservices/rest-api/**"
+              - "chat-microservices/.dockerignore"
+
+            websocket:
+              - "chat-microservices/websocket/**"
+              - "chat-microservices/.dockerignore"
+
+            api-gateway:
+              - "chat-microservices/api-gateway/**"
+              - "chat-microservices/web/**"
+              - "chat-microservices/.dockerignore"
+
+      - name: Select services to build
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SERVICE_INPUT: ${{ inputs.service }}
+          CHANGED_SERVICES: ${{ steps.filter.outputs.changes }}
+        shell: bash
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            case "$SERVICE_INPUT" in
+              all)
+                services='["rest-api","websocket","api-gateway"]'
+                ;;
+              rest-api|websocket|api-gateway)
+                services="[\"$SERVICE_INPUT\"]"
+                ;;
+              *)
+                echo "Invalid service selection: $SERVICE_INPUT"
+                exit 1
+                ;;
+            esac
+          else
+            services="${CHANGED_SERVICES:-[]}"
+          fi
+
+          echo "Services selected: $services"
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build, scan and push (${{ matrix.service }})
+    needs: changes
+    if: ${{ needs.changes.outputs.services != '[]' && needs.changes.outputs.services != '' }}
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image and Dockerfile
+        id: service
+        env:
+          SERVICE: ${{ matrix.service }}
+        shell: bash
+        run: |
+          case "$SERVICE" in
+            rest-api)
+              image="chat-rest-api"
+              dockerfile="chat-microservices/rest-api/Dockerfile"
+              ;;
+            websocket)
+              image="chat-websocket"
+              dockerfile="chat-microservices/websocket/Dockerfile"
+              ;;
+            api-gateway)
+              image="chat-api-gateway"
+              dockerfile="chat-microservices/api-gateway/Dockerfile"
+              ;;
+            *)
+              echo "Unknown service: $SERVICE"
+              exit 1
+              ;;
+          esac
+
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=$dockerfile" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Query this image's own Docker Hub tags.
+      - name: Calculate next patch version
+        id: version
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_REPOSITORY: ${{ steps.service.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Obtain a short-lived Docker Hub API token.
+          payload="$(
+            jq -n \
+              --arg identifier "$DOCKERHUB_USERNAME" \
+              --arg secret "$DOCKERHUB_TOKEN" \
+              '{identifier: $identifier, secret: $secret}'
+          )"
+
+          api_token="$(
+            curl -fsSL \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              https://hub.docker.com/v2/auth/token |
+            jq -er '.access_token'
+          )"
+
+          # Fetch all tag pages for this specific image.
+          url="https://hub.docker.com/v2/namespaces/${IMAGE_PREFIX}/repositories/${IMAGE_REPOSITORY}/tags?page_size=100"
+          tags_file="$(mktemp)"
+          trap 'rm -f "$tags_file"' EXIT
+
+          while [[ -n "$url" ]]; do
+            response="$(
+              curl -fsSL \
+                -H "Authorization: Bearer $api_token" \
+                "$url"
+            )"
+
+            jq -r '.results[].name' <<< "$response" >> "$tags_file"
+            url="$(jq -r '.next // empty' <<< "$response")"
+          done
+
+          # Consider only semantic version tags such as v1.0.1.
+          latest="$(
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$tags_file" |
+            sort -V |
+            tail -n 1 || true
+          )"
+
+          # Initial version if this repository has no version tags.
+          if [[ -z "$latest" ]]; then
+            latest="v1.0.0"
+          fi
+
+          echo "Latest published version: $latest"
+
+          # Pull the existing image before calculating the next version.
+          docker pull \
+            "${IMAGE_PREFIX}/${IMAGE_REPOSITORY}:${latest}"
+
+          version="${latest#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+
+          next_patch=$((patch + 1))
+          next_version="v${major}.${minor}.${next_patch}"
+
+          echo "Next version: $next_version"
+          echo "tag=$next_version" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: chat-microservices
+          file: ${{ steps.service.outputs.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_PREFIX }}/${{ steps.service.outputs.image }}:${{ steps.version.outputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Aqua Security Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_PREFIX }}/${{ steps.service.outputs.image }}:${{ steps.version.outputs.tag }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      # Push the exact image that passed the scan.
+      - name: Push image
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ steps.service.outputs.image }}:${{ steps.version.outputs.tag }}
+        run: docker push "$IMAGE"
