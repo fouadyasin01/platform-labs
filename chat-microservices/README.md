@@ -2,8 +2,8 @@
 
 > A production-minded real-time chat platform built with **Flask, FastAPI, Redis Pub/Sub, MongoDB, Nginx, and Docker Compose**.
 
-[![CI](https://github.com/vanbasten01/platform-labs/actions/workflows/chat-microservices-ci.yml/badge.svg)](https://github.com/vanbasten01/platform-labs/actions/workflows/chat-microservices-ci.yml)  
-[View CI workflow](https://github.com/vanbasten01/platform-labs/blob/feature/chat-microservices/.github/workflows/chat-microservices-ci.yml)
+[![CI](https://github.com/fouadyasin01/platform-labs/actions/workflows/chat-microservices-ci.yml/badge.svg?branch=master)](https://github.com/fouadyasin01/platform-labs/actions/workflows/chat-microservices-ci.yml)  
+[View CI workflow](https://github.com/fouadyasin01/platform-labs/blob/master/.github/workflows/chat-microservices-ci.yml)
 
 MicroChat demonstrates how to separate **HTTP APIs, real-time communication, persistence, messaging, and edge routing** into independently deployable services while keeping the runtime simple and reproducible.
 
