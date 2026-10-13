@@ -1,0 +1,105 @@
+services:
+  mongodb:
+    image: mongo:8
+    container_name: chat-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - chat-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  redis:
+    image: redis:8-alpine
+    container_name: chat-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - chat-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  rest-api:
+    image: vanbasten01/chat-rest-api:v1.0.0
+    container_name: chat-rest-api
+    restart: unless-stopped
+    environment:
+      MONGO_URI: ${MONGO_URI}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chat-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  websocket:
+    image: vanbasten01/chat-websocket:v1.0.0
+    container_name: chat-websocket
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - chat-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  api-gateway:
+    image: vanbasten01/chat-api-gateway:v1.0.0
+    container_name: chat-api-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      rest-api:
+        condition: service_healthy
+      websocket:
+        condition: service_healthy
+    networks:
+      - chat-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 128M
+
+volumes:
+  mongodb-data:
+
+networks:
+  chat-network:
+    driver: bridge
