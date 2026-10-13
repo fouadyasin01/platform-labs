@@ -3,7 +3,7 @@ name: Chat Microservices CI
 on:
   push:
     branches:
-      - main
+      - master
       - "feature/chat-microservices"
     paths:
       - "chat-microservices/**"
