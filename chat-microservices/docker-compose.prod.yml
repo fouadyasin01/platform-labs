@@ -79,7 +79,7 @@ services:
           memory: 256M
 
   api-gateway:
-    image: vanbasten01/chat-api-gateway:v1.0.0
+    image: vanbasten01/chat-api-gateway:v1.0.3
     container_name: chat-api-gateway
     restart: unless-stopped
     ports:
