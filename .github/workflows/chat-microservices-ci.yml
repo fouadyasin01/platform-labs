@@ -1,0 +1,242 @@
+name: Chat Microservices CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/chat-microservices"
+    paths:
+      - "chat-microservices/**"
+      - ".github/workflows/chat-microservices-ci.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: docker.io
+  IMAGE_PREFIX: vanbasten01
+
+jobs:
+  version:
+    name: Calculate next version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Calculate next patch version
+        id: version
+        shell: bash
+        run: |
+          latest=$(
+            git tag --list 'v*.*.*' |
+            sort -V |
+            tail -n 1
+          )
+
+          if [ -z "$latest" ]; then
+            latest="v1.0.0"
+          fi
+
+          version="${latest#v}"
+
+          IFS='.' read -r major minor patch <<< "$version"
+
+          next_patch=$((patch + 1))
+          next_version="v${major}.${minor}.${next_patch}"
+
+          echo "Current version: $latest"
+          echo "Next version: $next_version"
+
+          echo "version=$next_version" >> "$GITHUB_OUTPUT"
+
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      rest-api: ${{ steps.filter.outputs.rest-api }}
+      websocket: ${{ steps.filter.outputs.websocket }}
+      api-gateway: ${{ steps.filter.outputs.api-gateway }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect service changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rest-api:
+              - "chat-microservices/rest-api/**"
+              - "chat-microservices/web/**"
+              - "chat-microservices/docker-compose*.yml"
+              - "chat-microservices/.dockerignore"
+
+            websocket:
+              - "chat-microservices/websocket/**"
+              - "chat-microservices/docker-compose*.yml"
+              - "chat-microservices/.dockerignore"
+
+            api-gateway:
+              - "chat-microservices/api-gateway/**"
+              - "chat-microservices/web/**"
+              - "chat-microservices/docker-compose*.yml"
+              - "chat-microservices/.dockerignore"
+
+  rest-api:
+    name: Build and push REST API
+    needs:
+      - version
+      - changes
+    if: needs.changes.outputs.rest-api == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: chat-microservices
+          file: chat-microservices/rest-api/Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_PREFIX }}/chat-rest-api:${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=chat-rest-api
+          cache-to: type=gha,mode=max,scope=chat-rest-api
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/chat-rest-api:${{ needs.version.outputs.version }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Push image
+        uses: docker/build-push-action@v6
+        with:
+          context: chat-microservices
+          file: chat-microservices/rest-api/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/chat-rest-api:${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=chat-rest-api
+          cache-to: type=gha,mode=max,scope=chat-rest-api
+
+  websocket:
+    name: Build and push WebSocket
+    needs:
+      - version
+      - changes
+    if: needs.changes.outputs.websocket == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: chat-microservices
+          file: chat-microservices/websocket/Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_PREFIX }}/chat-websocket:${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=chat-websocket
+          cache-to: type=gha,mode=max,scope=chat-websocket
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/chat-websocket:${{ needs.version.outputs.version }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Push image
+        uses: docker/build-push-action@v6
+        with:
+          context: chat-microservices
+          file: chat-microservices/websocket/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/chat-websocket:${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=chat-websocket
+          cache-to: type=gha,mode=max,scope=chat-websocket
+
+  api-gateway:
+    name: Build and push API Gateway
+    needs:
+      - version
+      - changes
+    if: needs.changes.outputs.api-gateway == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: chat-microservices
+          file: chat-microservices/api-gateway/Dockerfile
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_PREFIX }}/chat-api-gateway:${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=chat-api-gateway
+          cache-to: type=gha,mode=max,scope=chat-api-gateway
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}/chat-api-gateway:${{ needs.version.outputs.version }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Push image
+        uses: docker/build-push-action@v6
+        with:
+          context: chat-microservices
+          file: chat-microservices/api-gateway/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/chat-api-gateway:${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=chat-api-gateway
+          cache-to: type=gha,mode=max,scope=chat-api-gateway
