@@ -61,7 +61,7 @@ services:
           memory: 256M
 
   websocket:
-    image: vanbasten01/chat-websocket:v1.0.0
+    image: vanbasten01/chat-websocket:v1.0.1
     container_name: chat-websocket
     restart: unless-stopped
     environment:
