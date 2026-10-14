@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-rest-api
+  labels:
+    app.kubernetes.io/name: microchat
+    app.kubernetes.io/component: rest-api
+spec:
+  replicas: {{ .Values.restApi.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: microchat
+      app.kubernetes.io/component: rest-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: microchat
+        app.kubernetes.io/component: rest-api
+    spec:
+      containers:
+        - name: rest-api
+          image: "{{ .Values.restApi.image.repository }}:{{ .Values.restApi.image.tag }}"
+          imagePullPolicy: {{ .Values.restApi.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.restApi.service.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-rest-api-config
+          env:
+            - name: MONGO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.auth.existingSecret }}
+                  key: {{ .Values.mongodb.auth.usernameKey }}
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.auth.existingSecret }}
+                  key: {{ .Values.mongodb.auth.passwordKey }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.auth.existingSecret }}
+                  key: {{ .Values.redis.auth.passwordKey }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

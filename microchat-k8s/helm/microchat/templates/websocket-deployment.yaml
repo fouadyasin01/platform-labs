@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-websocket
+  labels:
+    app.kubernetes.io/name: microchat
+    app.kubernetes.io/component: websocket
+spec:
+  replicas: {{ .Values.websocket.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: microchat
+      app.kubernetes.io/component: websocket
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: microchat
+        app.kubernetes.io/component: websocket
+    spec:
+      containers:
+        - name: websocket
+          image: "{{ .Values.websocket.image.repository }}:{{ .Values.websocket.image.tag }}"
+          imagePullPolicy: {{ .Values.websocket.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.websocket.service.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-websocket-config
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.auth.existingSecret }}
+                  key: {{ .Values.redis.auth.passwordKey }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
