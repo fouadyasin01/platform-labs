@@ -10,8 +10,8 @@ COPY web/ .
 FROM nginx:alpine
 
 RUN apk upgrade --no-cache \
-    && addgroup -S nginxapp \
-    && adduser -S nginxapp -G nginxapp \
+    && addgroup -S -g 1001 nginxapp \
+    && adduser -S -D -H -u 1001 -G nginxapp nginxapp \
     && mkdir -p /var/cache/nginx /var/log/nginx /tmp/nginx \
     && chown -R nginxapp:nginxapp \
         /var/cache/nginx \
