@@ -55,7 +55,8 @@ mongodb:
   persistence:
     enabled: true
     size: 5Gi
-
+    storageClassName: local-path
+    createStorageClass: true
 apiGateway:
   enabled: true
   service:

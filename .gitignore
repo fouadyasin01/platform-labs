@@ -14,3 +14,4 @@ node_modules/
 .venv/
 __pycache__/
 *.pyc
+/microchat-k8s/helm/microchat/values-secrets.yaml
