@@ -8,10 +8,13 @@ import redis
 app = Flask(__name__)
 CORS(app)
 
-
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = (
+    f"mongodb://{os.getenv('MONGO_USERNAME')}:{os.getenv('MONGO_PASSWORD')}"
+    f"@{os.getenv('MONGO_HOST', 'localhost')}:{os.getenv('MONGO_PORT', '27017')}/chat?authSource=admin"
+)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["chat"]
@@ -20,9 +23,9 @@ messages_collection = db["messages"]
 redis_client = redis.Redis(
     host=REDIS_HOST,
     port=REDIS_PORT,
+    password=REDIS_PASSWORD,
     decode_responses=True,
 )
-
 
 @app.get("/api/health")
 def health():

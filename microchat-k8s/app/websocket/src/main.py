@@ -8,6 +8,7 @@ app = FastAPI()
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 
 clients: set[WebSocket] = set()
 redis_task: asyncio.Task | None = None
@@ -38,6 +39,7 @@ async def redis_listener():
     redis_client = redis.Redis(
         host=REDIS_HOST,
         port=REDIS_PORT,
+        password=REDIS_PASSWORD,
         decode_responses=True,
     )
 
