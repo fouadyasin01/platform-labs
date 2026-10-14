@@ -23,7 +23,7 @@ spec:
           imagePullPolicy: {{ .Values.restApi.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.restApi.service.port }}
+              containerPort: {{ .Values.restApi.containerPort }}
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-rest-api-config

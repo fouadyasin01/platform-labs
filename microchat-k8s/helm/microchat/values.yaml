@@ -19,6 +19,7 @@ frontend:
       memory: 128Mi
 
 restApi:
+  containerPort: 3001
   replicaCount: 2
   image:
     repository: vanbasten01/chat-rest-api
@@ -29,6 +30,7 @@ restApi:
 
 websocket:
   replicaCount: 2
+  containerPort: 3002
   image:
     repository: vanbasten01/chat-websocket
     tag: "1.0.2"
@@ -57,8 +59,14 @@ mongodb:
     size: 5Gi
     storageClassName: local-path
     createStorageClass: true
-apiGateway:
+gateway:
   enabled: true
-  service:
-    type: LoadBalancer
+  name: microchat
+  className: eg
+  listener:
+    name: http
     port: 80
+    protocol: HTTP
+  httpRoute:
+    enabled: true
+    path: /
