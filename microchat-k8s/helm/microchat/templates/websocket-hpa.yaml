@@ -1,0 +1,23 @@
+{{- if .Values.autoscaling.websocket.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-websocket
+  labels:
+    app.kubernetes.io/name: microchat
+    app.kubernetes.io/component: websocket
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-websocket
+  minReplicas: {{ .Values.autoscaling.websocket.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.websocket.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.websocket.targetCPUUtilizationPercentage }}
+{{- end }}

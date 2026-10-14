@@ -4,7 +4,7 @@ frontend:
   replicaCount: 2
   image:
     repository: vanbasten01/k8s-microchat-fd
-    tag: "1.0.0"
+    tag: "1.0.1"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -70,3 +70,22 @@ gateway:
   httpRoute:
     enabled: true
     path: /
+
+autoscaling:
+  frontend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  restApi:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  websocket:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
