@@ -24,6 +24,16 @@ spec:
         app.kubernetes.io/name: microchat
         app.kubernetes.io/component: websocket
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: microchat
+                    app.kubernetes.io/component: websocket
       containers:
         - name: websocket
           image: "{{ .Values.websocket.image.repository }}:{{ .Values.websocket.image.tag }}"
