@@ -30,3 +30,25 @@ spec:
     matchLabels:
       app.kubernetes.io/name: microchat
       app.kubernetes.io/component: websocket
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-redis-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: microchat
+      app.kubernetes.io/component: redis
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-mongodb-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: microchat
+      app.kubernetes.io/component: mongodb
