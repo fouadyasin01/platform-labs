@@ -1,3 +1,4 @@
+
 {{- if .Values.autoscaling.frontend.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -20,4 +21,19 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.frontend.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      selectPolicy: Min
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      selectPolicy: Min
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
 {{- end }}
