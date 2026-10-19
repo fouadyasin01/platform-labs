@@ -40,7 +40,7 @@ spec:
                 - CHOWN
                 - SETUID
                 - SETGID
-
+                - DAC_OVERRIDE
           env:
             - name: MONGO_INITDB_ROOT_USERNAME
               valueFrom:
