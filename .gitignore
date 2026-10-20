@@ -6,6 +6,10 @@
 **/*.tfstate.*
 **/.terraform.lock.hcl
 
+# Terraform environment-specific values
+**/terraform.tfvars
+**/terraform.tfvars.json
+
 
 node_modules/
 
