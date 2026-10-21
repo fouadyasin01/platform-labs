@@ -3,8 +3,9 @@ data "aws_caller_identity" "current" {}
 module "networking" {
   source = "../../modules/networking"
 
-  project_name = "capston-1"
-  vpc_cidr     = "10.20.0.0/16"
+  project_name                     = "capston-1"
+  vpc_cidr                         = "10.20.0.0/16"
+  karpenter_discovery_cluster_name = "capston-1-dev"
 
   availability_zones = var.availability_zones
 
