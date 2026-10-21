@@ -30,3 +30,8 @@ variable "enable_nat_gateways" {
   type        = bool
   default     = true
 }
+
+variable "karpenter_discovery_cluster_name" {
+  description = "EKS cluster name used for Karpenter subnet discovery"
+  type        = string
+}
