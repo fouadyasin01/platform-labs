@@ -59,6 +59,12 @@ resource "aws_eks_cluster" "this" {
   }
 }
 
+resource "aws_ec2_tag" "karpenter_cluster_security_group" {
+  resource_id = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+  key         = "karpenter.sh/discovery"
+  value       = var.cluster_name
+}
+
 resource "aws_iam_role" "node" {
   name = "${var.cluster_name}-node-role"
 
@@ -130,6 +136,36 @@ resource "aws_iam_openid_connect_provider" "cluster" {
   ]
 }
 
+resource "aws_iam_role" "karpenter_controller" {
+  name = "${var.cluster_name}-karpenter-controller-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.cluster.arn
+      }
+
+      Action = "sts:AssumeRoleWithWebIdentity"
+
+      Condition = {
+        StringEquals = {
+          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:aud" = "sts.amazonaws.com"
+
+          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:karpenter"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    Name      = "${var.cluster_name}-karpenter-controller-role"
+    ManagedBy = "Terraform"
+  }
+}
+
 resource "aws_iam_role" "vpc_cni" {
   name = "${var.cluster_name}-vpc-cni-role"
 
@@ -175,3 +211,41 @@ resource "aws_eks_addon" "core" {
     aws_iam_role_policy_attachment.vpc_cni
   ]
 }
+
+resource "aws_iam_role" "karpenter_node" {
+  name = "${var.cluster_name}-karpenter-node-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = {
+    Name      = "${var.cluster_name}-karpenter-node-role"
+    ManagedBy = "Terraform"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "karpenter_node" {
+  for_each = toset([
+    "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  ])
+
+  role       = aws_iam_role.karpenter_node.name
+  policy_arn = each.value
+}
+
+resource "aws_eks_access_entry" "karpenter_node" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = aws_iam_role.karpenter_node.arn
+  type          = "EC2_LINUX"
+}
+
+
