@@ -19,3 +19,23 @@ node_modules/
 __pycache__/
 *.pyc
 /microchat-k8s/helm/microchat/values-secrets.yaml
+
+# Production CI/CD assignment: local secrets and generated files
+prod-cicd-sec/helm/microchat/values-secrets.yaml
+prod-cicd-sec/**/.env
+prod-cicd-sec/**/.venv/
+prod-cicd-sec/**/__pycache__/
+prod-cicd-sec/**/.pytest_cache/
+prod-cicd-sec/**/.ruff_cache/
+prod-cicd-sec/**/.coverage
+prod-cicd-sec/**/htmlcov/
+
+# Frontend test coverage and generated reports
+coverage/
+.nyc_output/
+
+# Python test artifacts
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
