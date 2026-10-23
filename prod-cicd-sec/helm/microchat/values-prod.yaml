@@ -1,0 +1,29 @@
+frontend:
+  replicaCount: 3
+
+restApi:
+  replicaCount: 3
+
+websocket:
+  replicaCount: 3
+
+mongodb:
+  persistence:
+    size: 20Gi
+
+autoscaling:
+  frontend:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  restApi:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  websocket:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70

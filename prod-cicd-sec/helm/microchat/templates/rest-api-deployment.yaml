@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-rest-api
+  labels:
+    app.kubernetes.io/name: microchat
+    app.kubernetes.io/component: rest-api
+spec:
+  {{- if not .Values.autoscaling.restApi.enabled }}
+  replicas: {{ .Values.restApi.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: microchat
+      app.kubernetes.io/component: rest-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: microchat
+        app.kubernetes.io/component: rest-api
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: microchat
+                    app.kubernetes.io/component: rest-api
+      containers:
+        - name: rest-api
+          image: "{{ .Values.restApi.image.repository }}:{{ .Values.restApi.image.tag }}"
+          imagePullPolicy: {{ .Values.restApi.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.restApi.containerPort }}
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-rest-api-config
+          env:
+            - name: MONGO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.auth.existingSecret }}
+                  key: {{ .Values.mongodb.auth.usernameKey }}
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.auth.existingSecret }}
+                  key: {{ .Values.mongodb.auth.passwordKey }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.auth.existingSecret }}
+                  key: {{ .Values.redis.auth.passwordKey }}
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
