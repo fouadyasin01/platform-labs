@@ -1,0 +1,25 @@
+aws_region  = "us-east-1"
+project_name = "prod-cicd-sec"
+
+vpc_cidr = "10.40.0.0/16"
+
+availability_zones = [
+  "us-east-1a",
+  "us-east-1b",
+  "us-east-1c"
+]
+
+public_subnet_cidrs = [
+  "10.40.0.0/20",
+  "10.40.16.0/20",
+  "10.40.32.0/20"
+]
+
+private_subnet_cidrs = [
+  "10.40.48.0/20",
+  "10.40.64.0/20",
+  "10.40.80.0/20"
+]
+
+# Replace with your trusted public IP in CIDR notation.
+cluster_endpoint_public_access_cidrs = ["REPLACE_WITH_YOUR_PUBLIC_IP/32"]
