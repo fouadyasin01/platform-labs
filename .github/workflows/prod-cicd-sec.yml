@@ -65,7 +65,7 @@ jobs:
               - 'prod-cicd-sec/.dockerignore'
               - '.github/workflows/prod-cicd-sec.yml'
 
-                    - name: Create build matrix
+      - name: Create build matrix
         id: matrix
         env:
           FRONTEND: ${{ steps.filter.outputs.frontend }}
