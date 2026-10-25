@@ -28,6 +28,7 @@ redis_client = redis.Redis(
     decode_responses=True,
 )
 
+
 @app.get("/api/health")
 def health():
     return jsonify({"status": "healthy"})
@@ -35,12 +36,7 @@ def health():
 
 @app.get("/api/messages")
 def get_messages():
-    messages = list(
-        messages_collection.find(
-            {},
-            {"_id": 0}
-        ).sort("created_at", 1)
-    )
+    messages = list(messages_collection.find({}, {"_id": 0}).sort("created_at", 1))
 
     return jsonify(messages)
 
@@ -61,10 +57,7 @@ def create_message():
 
     redis_client.publish("chat_messages", message)
 
-    return jsonify({
-        "message": message,
-        "status": "published"
-    }), 201
+    return jsonify({"message": message, "status": "published"}), 201
 
 
 if __name__ == "__main__":

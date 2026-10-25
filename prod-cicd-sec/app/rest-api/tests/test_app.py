@@ -76,6 +76,4 @@ def test_create_message_saves_and_publishes(client, monkeypatch):
     assert inserted_document["message"] == "Hello from CI"
     assert inserted_document["created_at"]
 
-    redis_client.publish.assert_called_once_with(
-        "chat_messages", "Hello from CI"
-    )
+    redis_client.publish.assert_called_once_with("chat_messages", "Hello from CI")

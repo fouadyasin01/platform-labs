@@ -1,4 +1,3 @@
-
 import asyncio
 import os
 import socket
@@ -104,8 +103,7 @@ async def redis_listener():
 
         except Exception as exc:
             print(
-                f"[{POD_NAME}] Redis listener error: "
-                f"{type(exc).__name__}: {exc}",
+                f"[{POD_NAME}] Redis listener error: {type(exc).__name__}: {exc}",
                 flush=True,
             )
 
