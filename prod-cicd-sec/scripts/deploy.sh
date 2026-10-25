@@ -40,6 +40,13 @@ if [[ ! -f "$VALUES_FILE" ]]; then
   exit 1
 fi
 
+# Require the namespace to exist; the deployment role must not create namespaces.
+if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
+  echo "::error::Namespace '$NAMESPACE' does not exist or cannot be accessed."
+  echo "Create it beforehand using an authorized administrative identity."
+  exit 1
+fi
+
 # Select the most recent successfully deployed Helm revision.
 previous_revision="$(
   helm history "$RELEASE" -n "$NAMESPACE" -o json 2>/dev/null |
@@ -76,10 +83,6 @@ rollback() {
 }
 
 echo "Preparing namespace-scoped credentials for $NAMESPACE."
-
-kubectl create namespace "$NAMESPACE" \
-  --dry-run=client -o yaml |
-  kubectl apply -f -
 
 # Use temporary files so secret values do not appear in kubectl arguments.
 SECRET_DIR="$(mktemp -d)"
@@ -118,7 +121,6 @@ echo "Deploying $RELEASE with image tag $IMAGE_TAG."
 
 if ! helm upgrade --install "$RELEASE" "$CHART_PATH" \
   --namespace "$NAMESPACE" \
-  --create-namespace \
   --values "$VALUES_FILE" \
   --set-string "frontend.image.repository=$IMAGE_PREFIX/prod-cicd-frontend" \
   --set-string "frontend.image.tag=$IMAGE_TAG" \
