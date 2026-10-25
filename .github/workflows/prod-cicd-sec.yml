@@ -39,6 +39,7 @@ jobs:
       rest_api: ${{ steps.filter.outputs.rest-api }}
       websocket: ${{ steps.filter.outputs.websocket }}
       shared: ${{ steps.filter.outputs.shared }}
+      build_matrix: ${{ steps.matrix.outputs.build_matrix }}
 
     steps:
       - name: Checkout repository
@@ -63,6 +64,62 @@ jobs:
               - 'prod-cicd-sec/scripts/**'
               - 'prod-cicd-sec/.dockerignore'
               - '.github/workflows/prod-cicd-sec.yml'
+
+                    - name: Create build matrix
+        id: matrix
+        env:
+          FRONTEND: ${{ steps.filter.outputs.frontend }}
+          REST_API: ${{ steps.filter.outputs.rest-api }}
+          WEBSOCKET: ${{ steps.filter.outputs.websocket }}
+          SHARED: ${{ steps.filter.outputs.shared }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          services = {
+              "frontend": {
+                  "service": "frontend",
+                  "image": "prod-cicd-frontend",
+                  "context": "prod-cicd-sec/app/frontend",
+                  "dockerfile": "prod-cicd-sec/app/frontend/Dockerfile",
+              },
+              "rest-api": {
+                  "service": "rest-api",
+                  "image": "prod-cicd-rest-api",
+                  "context": "prod-cicd-sec/app",
+                  "dockerfile": "prod-cicd-sec/app/rest-api/Dockerfile",
+              },
+              "websocket": {
+                  "service": "websocket",
+                  "image": "prod-cicd-websocket",
+                  "context": "prod-cicd-sec/app",
+                  "dockerfile": "prod-cicd-sec/app/websocket/Dockerfile",
+              },
+          }
+
+          env = os.environ
+          changed = []
+
+          if env["EVENT_NAME"] in ("push", "workflow_dispatch"):
+              # Preserve the current all-services deployment behavior
+              # until deployment supports independent image tags.
+              changed = list(services.values())
+          else:
+              if env["SHARED"] == "true":
+                  changed = list(services.values())
+              else:
+                  if env["FRONTEND"] == "true":
+                      changed.append(services["frontend"])
+                  if env["REST_API"] == "true":
+                      changed.append(services["rest-api"])
+                  if env["WEBSOCKET"] == "true":
+                      changed.append(services["websocket"])
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("build_matrix=" + json.dumps(changed) + "\n")
+          PY
 
   prepare:
     name: Prepare image tag
@@ -254,24 +311,12 @@ jobs:
       needs.sast.result == 'success' &&
       needs.changes.result == 'success'
 
+
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - service: frontend
-            image: prod-cicd-frontend
-            context: prod-cicd-sec/app/frontend
-            dockerfile: prod-cicd-sec/app/frontend/Dockerfile
+        include: ${{ fromJSON(needs.changes.outputs.build_matrix) }}
 
-          - service: rest-api
-            image: prod-cicd-rest-api
-            context: prod-cicd-sec/app
-            dockerfile: prod-cicd-sec/app/rest-api/Dockerfile
-
-          - service: websocket
-            image: prod-cicd-websocket
-            context: prod-cicd-sec/app
-            dockerfile: prod-cicd-sec/app/websocket/Dockerfile
 
     steps:
       - name: Checkout repository
@@ -323,7 +368,7 @@ jobs:
 
   deploy_staging:
     name: Deploy staging
-    runs-on: [self-hosted, linux, x64, eks-access]
+    runs-on: ubuntu-latest
     needs:
       - prepare
       - build_scan_publish
@@ -334,6 +379,18 @@ jobs:
       IMAGE_TAG: staging-${{ needs.prepare.outputs.short_sha }}
 
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ vars.EKS_CLUSTER_NAME }}" \
+            --region "${{ vars.AWS_REGION }}"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -369,7 +426,7 @@ jobs:
 
   deploy_production:
     name: Deploy production
-    runs-on: [self-hosted, linux, x64, eks-access]
+    runs-on: ubuntu-latest
     needs:
       - prepare
       - promote_production_images
@@ -380,6 +437,18 @@ jobs:
       IMAGE_TAG: prod-${{ needs.prepare.outputs.short_sha }}
 
     steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ vars.EKS_CLUSTER_NAME }}" \
+            --region "${{ vars.AWS_REGION }}"
+            
       - name: Checkout repository
         uses: actions/checkout@v4
 
