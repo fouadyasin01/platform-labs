@@ -34,3 +34,14 @@ autoscaling:
     minReplicas: 3
     maxReplicas: 10
     targetCPUUtilizationPercentage: 70
+
+gateway:
+  enabled: false
+  name: microchat-prod
+  className: eg
+  listener:
+    name: http
+    port: 80
+    protocol: HTTP
+  httpRoute:
+    enabled: true

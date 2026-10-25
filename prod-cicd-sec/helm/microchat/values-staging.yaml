@@ -34,3 +34,14 @@ autoscaling:
     minReplicas: 2
     maxReplicas: 4
     targetCPUUtilizationPercentage: 70
+
+gateway:
+  enabled: false
+  name: microchat-staging
+  className: eg
+  listener:
+    name: http
+    port: 80
+    protocol: HTTP
+  httpRoute:
+    enabled: true
