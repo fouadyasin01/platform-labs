@@ -40,6 +40,7 @@ jobs:
       websocket: ${{ steps.filter.outputs.websocket }}
       shared: ${{ steps.filter.outputs.shared }}
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
+      affected_services: ${{ steps.matrix.outputs.affected_services }}
 
     steps:
       - name: Checkout repository
@@ -102,24 +103,26 @@ jobs:
           env = os.environ
           changed = []
 
-          if env["EVENT_NAME"] in ("push", "workflow_dispatch"):
-              # Preserve the current all-services deployment behavior
-              # until deployment supports independent image tags.
+          if env["EVENT_NAME"] == "workflow_dispatch":
+              # Manual runs intentionally build all services.
+              changed = list(services.values())
+          elif env["SHARED"] == "true":
+              # Shared application, Helm, script, or workflow changes.
               changed = list(services.values())
           else:
-              if env["SHARED"] == "true":
-                  changed = list(services.values())
-              else:
-                  if env["FRONTEND"] == "true":
-                      changed.append(services["frontend"])
-                  if env["REST_API"] == "true":
-                      changed.append(services["rest-api"])
-                  if env["WEBSOCKET"] == "true":
-                      changed.append(services["websocket"])
+              # Build only services whose application code changed.
+              if env["FRONTEND"] == "true":
+                  changed.append(services["frontend"])
+              if env["REST_API"] == "true":
+                  changed.append(services["rest-api"])
+              if env["WEBSOCKET"] == "true":
+                  changed.append(services["websocket"])
+
+          affected_services = ",".join(item["service"] for item in changed)
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("build_matrix=" + json.dumps(changed) + "\n")
-          PY
+              output.write("affected_services=" + affected_services + "\n")
 
   prepare:
     name: Prepare image tag
@@ -309,8 +312,8 @@ jobs:
       needs.prepare.result == 'success' &&
       needs.quality.result == 'success' &&
       needs.sast.result == 'success' &&
-      needs.changes.result == 'success'
-
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.build_matrix != '[]'
 
     strategy:
       fail-fast: false
@@ -371,12 +374,17 @@ jobs:
     runs-on: self-hosted
     needs:
       - prepare
+      - changes
       - build_scan_publish
-    if: github.event_name == 'push' && needs.build_scan_publish.result == 'success'
-    environment: staging
+
+    if: >-
+      github.event_name == 'push' &&
+      needs.build_scan_publish.result == 'success' &&
+      needs.changes.outputs.affected_services != ''
 
     env:
       IMAGE_TAG: staging-${{ needs.prepare.outputs.short_sha }}
+      AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
 
     steps:
       - name: Configure AWS credentials
@@ -408,8 +416,17 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - prepare
+      - changes
       - deploy_staging
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.deploy_staging.result == 'success'
+
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.deploy_staging.result == 'success' &&
+      needs.changes.outputs.affected_services != ''
+
+    env:
+      AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
 
     steps:
       - name: Login to Docker Hub
@@ -418,16 +435,39 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Promote images
+      - name: Promote affected images
         env:
           SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+        shell: bash
         run: |
-          for image in prod-cicd-frontend prod-cicd-rest-api prod-cicd-websocket; do
-            docker pull "${IMAGE_PREFIX}/${image}:staging-${SHORT_SHA}"
-            docker tag \
-              "${IMAGE_PREFIX}/${image}:staging-${SHORT_SHA}" \
-              "${IMAGE_PREFIX}/${image}:prod-${SHORT_SHA}"
-            docker push "${IMAGE_PREFIX}/${image}:prod-${SHORT_SHA}"
+          set -euo pipefail
+
+          IFS=',' read -ra services <<< "$AFFECTED_SERVICES"
+
+          for service in "${services[@]}"; do
+            case "$service" in
+              frontend)
+                image="prod-cicd-frontend"
+                ;;
+              rest-api)
+                image="prod-cicd-rest-api"
+                ;;
+              websocket)
+                image="prod-cicd-websocket"
+                ;;
+              *)
+                echo "ERROR: Unknown service: $service"
+                exit 1
+                ;;
+            esac
+
+            source="${IMAGE_PREFIX}/${image}:staging-${SHORT_SHA}"
+            target="${IMAGE_PREFIX}/${image}:prod-${SHORT_SHA}"
+
+            echo "Promoting $source to $target"
+            docker pull "$source"
+            docker tag "$source" "$target"
+            docker push "$target"
           done
 
   deploy_production:
@@ -435,12 +475,20 @@ jobs:
     runs-on: self-hosted
     needs:
       - prepare
+      - changes
       - promote_production_images
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.promote_production_images.result == 'success'
+
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.promote_production_images.result == 'success' &&
+      needs.changes.outputs.affected_services != ''
+
     environment: production
 
     env:
       IMAGE_TAG: prod-${{ needs.prepare.outputs.short_sha }}
+      AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
 
     steps:
       - name: Configure AWS credentials
@@ -451,8 +499,8 @@ jobs:
 
       - name: Configure kubectl
         run: |
-          aws eks update-kubeconfig \
-            --name "${{ vars.EKS_CLUSTER_NAME }}" \
+          aws eks update-kubeconfig \\
+            --name "${{ vars.EKS_CLUSTER_NAME }}" \\
             --region "${{ vars.AWS_REGION }}"
 
       - name: Checkout repository
