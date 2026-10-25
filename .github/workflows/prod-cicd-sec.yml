@@ -394,8 +394,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+
       - name: Deploy to staging
+        env:
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MONGODB_USERNAME: ${{ secrets.MONGODB_USERNAME }}
+          MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
         run: bash prod-cicd-sec/scripts/deploy.sh staging
+
 
   promote_production_images:
     name: Promote images for production
@@ -448,9 +454,13 @@ jobs:
           aws eks update-kubeconfig \
             --name "${{ vars.EKS_CLUSTER_NAME }}" \
             --region "${{ vars.AWS_REGION }}"
-            
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Deploy to production
+        env:
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MONGODB_USERNAME: ${{ secrets.MONGODB_USERNAME }}
+          MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
         run: bash prod-cicd-sec/scripts/deploy.sh production
