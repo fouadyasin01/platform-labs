@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-rest-api-config
+data:
+  MONGO_HOST: "{{ .Release.Name }}-mongodb"
+  MONGO_PORT: "{{ .Values.mongodb.port }}"
+  MONGO_DATABASE: "chat"
+  REDIS_HOST: "{{ .Release.Name }}-redis"
+  REDIS_PORT: "{{ .Values.redis.port }}"

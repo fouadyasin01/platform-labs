@@ -1,0 +1,520 @@
+name: Production CI/CD Security
+
+on:
+  push:
+    branches:
+      - master
+      - feature/production-cicd-security
+    paths:
+      - "prod-cicd-sec/**"
+      - ".github/workflows/prod-cicd-sec.yml"
+
+  pull_request:
+    paths:
+      - "prod-cicd-sec/**"
+      - ".github/workflows/prod-cicd-sec.yml"
+
+  workflow_dispatch:
+
+concurrency:
+  group: prod-cicd-sec-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  id-token: write
+
+env:
+  IMAGE_PREFIX: vanbasten01
+  CHART_PATH: prod-cicd-sec/helm/microchat
+
+jobs:
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      rest_api: ${{ steps.filter.outputs.rest-api }}
+      websocket: ${{ steps.filter.outputs.websocket }}
+      shared: ${{ steps.filter.outputs.shared }}
+      build_matrix: ${{ steps.matrix.outputs.build_matrix }}
+      affected_services: ${{ steps.matrix.outputs.affected_services }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'prod-cicd-sec/app/frontend/**'
+            rest-api:
+              - 'prod-cicd-sec/app/rest-api/**'
+            websocket:
+              - 'prod-cicd-sec/app/websocket/**'
+            shared:
+              - 'prod-cicd-sec/app/web/**'
+              - 'prod-cicd-sec/helm/**'
+              - 'prod-cicd-sec/scripts/**'
+              - 'prod-cicd-sec/.dockerignore'
+              - '.github/workflows/prod-cicd-sec.yml'
+
+      - name: Create build matrix
+        id: matrix
+        env:
+          FRONTEND: ${{ steps.filter.outputs.frontend }}
+          REST_API: ${{ steps.filter.outputs.rest-api }}
+          WEBSOCKET: ${{ steps.filter.outputs.websocket }}
+          SHARED: ${{ steps.filter.outputs.shared }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          services = {
+              "frontend": {
+                  "service": "frontend",
+                  "image": "prod-cicd-frontend",
+                  "context": "prod-cicd-sec/app/frontend",
+                  "dockerfile": "prod-cicd-sec/app/frontend/Dockerfile",
+              },
+              "rest-api": {
+                  "service": "rest-api",
+                  "image": "prod-cicd-rest-api",
+                  "context": "prod-cicd-sec/app",
+                  "dockerfile": "prod-cicd-sec/app/rest-api/Dockerfile",
+              },
+              "websocket": {
+                  "service": "websocket",
+                  "image": "prod-cicd-websocket",
+                  "context": "prod-cicd-sec/app",
+                  "dockerfile": "prod-cicd-sec/app/websocket/Dockerfile",
+              },
+          }
+
+          env = os.environ
+          changed = []
+
+          if env["EVENT_NAME"] == "workflow_dispatch":
+              # Manual runs intentionally build all services.
+              changed = list(services.values())
+          elif env["SHARED"] == "true":
+              # Shared application, Helm, script, or workflow changes.
+              changed = list(services.values())
+          else:
+              # Build only services whose application code changed.
+              if env["FRONTEND"] == "true":
+                  changed.append(services["frontend"])
+              if env["REST_API"] == "true":
+                  changed.append(services["rest-api"])
+              if env["WEBSOCKET"] == "true":
+                  changed.append(services["websocket"])
+
+          affected_services = ",".join(item["service"] for item in changed)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("build_matrix=" + json.dumps(changed) + "\n")
+              output.write("affected_services=" + affected_services + "\n")
+
+  prepare:
+    name: Prepare image tag
+    runs-on: ubuntu-latest
+
+    outputs:
+      short_sha: ${{ steps.sha.outputs.short_sha }}
+
+    steps:
+      - name: Generate image tag
+        id: sha
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: echo "short_sha=${COMMIT_SHA:0:4}" >> "$GITHUB_OUTPUT"
+
+  quality:
+    name: Quality checks
+    runs-on: ubuntu-latest
+    needs: changes
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: frontend
+            paths: frontend
+          - service: rest-api
+            paths: rest_api
+          - service: websocket
+            paths: websocket
+
+    steps:
+      - name: Skip unchanged service
+        id: check
+        env:
+          SERVICE: ${{ matrix.service }}
+          FRONTEND_CHANGED: ${{ needs.changes.outputs.frontend }}
+          REST_API_CHANGED: ${{ needs.changes.outputs.rest_api }}
+          WEBSOCKET_CHANGED: ${{ needs.changes.outputs.websocket }}
+          SHARED_CHANGED: ${{ needs.changes.outputs.shared }}
+        run: |
+          run_checks=false
+
+          if [ "$SERVICE" = "frontend" ] && \
+             { [ "$FRONTEND_CHANGED" = "true" ] || [ "$SHARED_CHANGED" = "true" ]; }; then
+            run_checks=true
+          fi
+
+          if [ "$SERVICE" = "rest-api" ] && \
+             { [ "$REST_API_CHANGED" = "true" ] || [ "$SHARED_CHANGED" = "true" ]; }; then
+            run_checks=true
+          fi
+
+          if [ "$SERVICE" = "websocket" ] && \
+             { [ "$WEBSOCKET_CHANGED" = "true" ] || [ "$SHARED_CHANGED" = "true" ]; }; then
+            run_checks=true
+          fi
+
+          # Run all checks for manual runs.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            run_checks=true
+          fi
+
+          # Run all checks on pushes to preserve the release pipeline.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            run_checks=true
+          fi
+
+          echo "run_checks=$run_checks" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        if: steps.check.outputs.run_checks == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: prod-cicd-sec/app/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        run: npm ci
+
+      - name: Check frontend formatting
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        run: npx prettier --check .
+
+      - name: Run frontend tests
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        run: npm run test:coverage
+
+      - name: Audit frontend dependencies
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        run: npm audit --audit-level=high
+
+      - name: Setup Python
+        if: steps.check.outputs.run_checks == 'true' && matrix.service != 'frontend'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            prod-cicd-sec/app/rest-api/requirements*.txt
+            prod-cicd-sec/app/websocket/requirements*.txt
+
+      - name: Install REST API dependencies
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'rest-api'
+        working-directory: prod-cicd-sec/app/rest-api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Install WebSocket dependencies
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'websocket'
+        working-directory: prod-cicd-sec/app/websocket
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint REST API
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'rest-api'
+        working-directory: prod-cicd-sec/app/rest-api
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test REST API
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'rest-api'
+        working-directory: prod-cicd-sec/app/rest-api
+        run: pytest --cov=src --cov-report=term-missing --cov-fail-under=90
+
+      - name: Audit REST API dependencies
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'rest-api'
+        working-directory: prod-cicd-sec/app/rest-api
+        run: pip-audit -r requirements.txt
+
+      - name: Lint WebSocket service
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'websocket'
+        working-directory: prod-cicd-sec/app/websocket
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test WebSocket service
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'websocket'
+        working-directory: prod-cicd-sec/app/websocket
+        run: pytest --cov=src --cov-report=term-missing
+
+      - name: Audit WebSocket dependencies
+        if: steps.check.outputs.run_checks == 'true' && matrix.service == 'websocket'
+        working-directory: prod-cicd-sec/app/websocket
+        run: pip-audit -r requirements.txt
+
+  sast:
+    name: Static application security testing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/default
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+  build_scan_publish:
+    name: Build, scan and publish images
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - quality
+      - sast
+      - changes
+
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.quality.result == 'success' &&
+      needs.sast.result == 'success' &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.build_matrix != '[]'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.build_matrix) }}
+
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: version
+        env:
+          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+        run: echo "tag=staging-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set image name
+        id: service
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ steps.version.outputs.tag }}
+
+      - name: Aqua Security Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_PREFIX }}/${{ steps.service.outputs.image }}:${{ steps.version.outputs.tag }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Push image to Docker Hub
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ${{ matrix.image }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: docker push "${IMAGE_PREFIX}/${IMAGE}:${TAG}"
+
+
+  deploy_staging:
+    name: Deploy staging
+    environment: staging
+    runs-on: self-hosted
+
+    needs:
+      - prepare
+      - changes
+      - build_scan_publish
+
+    if: >-
+      github.event_name == 'push' &&
+      needs.build_scan_publish.result == 'success' &&
+      needs.changes.outputs.affected_services != ''
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      IMAGE_TAG: staging-${{ needs.prepare.outputs.short_sha }}
+      AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ vars.EKS_CLUSTER_NAME }}" \
+            --region "${{ vars.AWS_REGION }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        env:
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MONGODB_USERNAME: ${{ secrets.MONGODB_USERNAME }}
+          MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
+        run: bash prod-cicd-sec/scripts/deploy.sh staging
+
+
+  promote_production_images:
+    name: Promote images for production
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - changes
+      - deploy_staging
+
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.deploy_staging.result == 'success' &&
+      needs.changes.outputs.affected_services != ''
+
+    env:
+      AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
+
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Promote affected images
+        env:
+          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IFS=',' read -ra services <<< "$AFFECTED_SERVICES"
+
+          for service in "${services[@]}"; do
+            case "$service" in
+              frontend)
+                image="prod-cicd-frontend"
+                ;;
+              rest-api)
+                image="prod-cicd-rest-api"
+                ;;
+              websocket)
+                image="prod-cicd-websocket"
+                ;;
+              *)
+                echo "ERROR: Unknown service: $service"
+                exit 1
+                ;;
+            esac
+
+            source="${IMAGE_PREFIX}/${image}:staging-${SHORT_SHA}"
+            target="${IMAGE_PREFIX}/${image}:prod-${SHORT_SHA}"
+
+            echo "Promoting $source to $target"
+            docker pull "$source"
+            docker tag "$source" "$target"
+            docker push "$target"
+          done
+
+  deploy_production:
+    name: Deploy production
+    runs-on: self-hosted
+    needs:
+      - prepare
+      - changes
+      - promote_production_images
+
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.promote_production_images.result == 'success' &&
+      needs.changes.outputs.affected_services != ''
+
+    environment: production
+
+    env:
+      IMAGE_TAG: prod-${{ needs.prepare.outputs.short_sha }}
+      AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \\
+            --name "${{ vars.EKS_CLUSTER_NAME }}" \\
+            --region "${{ vars.AWS_REGION }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        env:
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          MONGODB_USERNAME: ${{ secrets.MONGODB_USERNAME }}
+          MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
+        run: bash prod-cicd-sec/scripts/deploy.sh production
