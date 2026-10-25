@@ -368,7 +368,7 @@ jobs:
 
   deploy_staging:
     name: Deploy staging
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs:
       - prepare
       - build_scan_publish
@@ -432,7 +432,7 @@ jobs:
 
   deploy_production:
     name: Deploy production
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs:
       - prepare
       - promote_production_images
