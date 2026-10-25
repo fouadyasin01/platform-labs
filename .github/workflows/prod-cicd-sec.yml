@@ -371,6 +371,7 @@ jobs:
 
   deploy_staging:
     name: Deploy staging
+    environment: staging
     runs-on: self-hosted
     needs:
       - prepare
@@ -387,24 +388,6 @@ jobs:
       AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
 
     steps:
-      - name: Diagnose AWS role configuration
-        env:
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-        run: |
-          if [ -z "$AWS_ROLE_ARN" ]; then
-            echo "ERROR: AWS_ROLE_ARN is empty"
-            exit 1
-          fi
-
-          echo "AWS_ROLE_ARN is configured"
-
-          if [[ "$AWS_ROLE_ARN" =~ ^arn:aws:iam::([0-9]{12}):role/(.+)$ ]]; then
-            echo "AWS account ID: ${BASH_REMATCH[1]}"
-            echo "IAM role name: ${BASH_REMATCH[2]}"
-          else
-            echo "ERROR: AWS_ROLE_ARN is not a standard IAM role ARN"
-            exit 1
-          fi
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
