@@ -10,6 +10,13 @@ websocket:
 mongodb:
   persistence:
     size: 20Gi
+    createStorageClass: false
+  auth:
+    existingSecretOnly: true
+
+redis:
+  auth:
+    existingSecretOnly: true
 
 autoscaling:
   frontend:
