@@ -1,0 +1,268 @@
+name: Production CI/CD Pipeline with Security Gates
+
+on:
+  push:
+    branches: [master, "feature/production-cicd-security"]
+    paths:
+      - "prod-cicd-sec/**"
+      - ".github/workflows/prod-cicd-sec.yml"
+  pull_request:
+    paths:
+      - "prod-cicd-sec/**"
+      - ".github/workflows/prod-cicd-sec.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: prod-cicd-sec-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE_PREFIX: vanbasten01
+  CHART_PATH: prod-cicd-sec/helm/microchat
+
+jobs:
+  prepare:
+    name: Prepare commit tag
+    runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.sha.outputs.short_sha }}
+    steps:
+      - name: Calculate short commit SHA
+        id: sha
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: echo "short_sha=${COMMIT_SHA:0:4}" >> "$GITHUB_OUTPUT"
+
+  quality:
+    name: Lint, test and dependency audit (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [frontend, rest-api, websocket]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: matrix.service == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: prod-cicd-sec/app/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        run: npm ci
+
+      - name: Frontend format check
+        if: matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find . -type f \( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' -o -name '*.json' -o -name '*.css' -o -name '*.html' \) ! -path './node_modules/*' ! -path './coverage/*' ! -name 'package-lock.json' | sort)
+          if ((${#files[@]})); then npx --yes prettier@3.6.2 --check "${files[@]}"; fi
+
+      - name: Frontend tests and coverage
+        if: matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        run: npm run test:coverage
+
+      - name: Frontend dependency audit
+        if: matrix.service == 'frontend'
+        working-directory: prod-cicd-sec/app/frontend
+        run: npm audit --audit-level=moderate
+
+      - name: Set up Python
+        if: matrix.service != 'frontend'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            prod-cicd-sec/app/rest-api/requirements*.txt
+            prod-cicd-sec/app/websocket/requirements*.txt
+
+      - name: Install backend test dependencies
+        if: matrix.service != 'frontend'
+        working-directory: prod-cicd-sec/app/${{ matrix.service }}
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Backend lint
+        if: matrix.service != 'frontend'
+        working-directory: prod-cicd-sec/app/${{ matrix.service }}
+        run: python -m ruff check src tests
+
+      - name: Backend format check
+        if: matrix.service != 'frontend'
+        working-directory: prod-cicd-sec/app/${{ matrix.service }}
+        run: python -m ruff format --check src tests
+
+      - name: REST API tests and coverage
+        if: matrix.service == 'rest-api'
+        working-directory: prod-cicd-sec/app/rest-api
+        run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=70 tests/
+
+      - name: WebSocket tests and coverage
+        if: matrix.service == 'websocket'
+        working-directory: prod-cicd-sec/app/websocket
+        run: python -m pytest --cov=main --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=70 tests/
+
+      - name: Audit Python runtime dependencies
+        if: matrix.service != 'frontend'
+        working-directory: prod-cicd-sec/app/${{ matrix.service }}
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit -r requirements.txt
+
+  sast:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Semgrep
+        run: python -m pip install semgrep
+      - name: Block on Semgrep error-severity findings
+        run: semgrep scan --config p/security-audit --severity ERROR --error prod-cicd-sec/app
+
+  build_scan_publish:
+    name: Build, scan and publish (${{ matrix.service }})
+    needs: [prepare, quality, sast]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: frontend
+            image: prod-cicd-frontend
+            context: prod-cicd-sec/app/frontend
+            dockerfile: prod-cicd-sec/app/frontend/Dockerfile
+          - service: rest-api
+            image: prod-cicd-rest-api
+            context: prod-cicd-sec/app
+            dockerfile: prod-cicd-sec/app/rest-api/Dockerfile
+          - service: websocket
+            image: prod-cicd-websocket
+            context: prod-cicd-sec/app
+            dockerfile: prod-cicd-sec/app/websocket/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:staging-${{ needs.prepare.outputs.short_sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:staging-${{ needs.prepare.outputs.short_sha }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push scanned staging tag
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:staging-${{ needs.prepare.outputs.short_sha }}
+        run: docker push "$IMAGE"
+
+  deploy_staging:
+    name: Deploy and smoke-test staging
+    if: github.event_name == 'push'
+    needs: [prepare, build_scan_publish]
+    runs-on: [self-hosted, linux, x64, eks-access]
+    environment: staging
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      MONGODB_USERNAME: ${{ secrets.MONGODB_USERNAME }}
+      MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
+      IMAGE_TAG: staging-${{ needs.prepare.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+      - name: Deploy staging and smoke-test
+        run: bash prod-cicd-sec/scripts/deploy.sh staging
+
+  promote_production_images:
+    name: Promote scanned images to production tags
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [prepare, deploy_staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Promote same image manifests
+        env:
+          SOURCE_TAG: staging-${{ needs.prepare.outputs.short_sha }}
+          TARGET_TAG: prod-${{ needs.prepare.outputs.short_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in prod-cicd-frontend prod-cicd-rest-api prod-cicd-websocket; do
+            docker pull "$IMAGE_PREFIX/$image:$SOURCE_TAG"
+            docker tag "$IMAGE_PREFIX/$image:$SOURCE_TAG" "$IMAGE_PREFIX/$image:$TARGET_TAG"
+            docker push "$IMAGE_PREFIX/$image:$TARGET_TAG"
+          done
+
+  deploy_production:
+    name: Deploy production with rollback protection
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [prepare, deploy_staging, promote_production_images]
+    runs-on: [self-hosted, linux, x64, eks-access]
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      MONGODB_USERNAME: ${{ secrets.MONGODB_USERNAME }}
+      MONGODB_PASSWORD: ${{ secrets.MONGODB_PASSWORD }}
+      IMAGE_TAG: prod-${{ needs.prepare.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+      - name: Deploy production and verify health
+        run: bash prod-cicd-sec/scripts/deploy.sh production
