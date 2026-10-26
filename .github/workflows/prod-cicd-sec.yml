@@ -159,8 +159,14 @@ jobs:
           echo "Resolved source commit: $SOURCE_SHA"
 
   quality:
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     name: Quality checks
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        contains(fromJSON('["opened","synchronize","reopened"]'), github.event.action)
+      )
     runs-on: ubuntu-latest
     needs: changes
 
@@ -305,9 +311,16 @@ jobs:
         run: pip-audit -r requirements.txt
 
   sast:
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
-    name: Static application security testing
+    name: SAST security scan
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        contains(fromJSON('["opened","synchronize","reopened"]'), github.event.action)
+      )
     runs-on: ubuntu-latest
+    needs: changes
 
     steps:
       - name: Checkout repository
