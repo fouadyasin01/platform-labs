@@ -2,7 +2,12 @@
 
 This README documents the MicroChat CI/CD release in the same order as the evidence screenshots: first the workflow diagram, then the code change, staging pipeline and staging verification, PR validation, production promotion, and finally production verification.
 
-**Pipeline configuration:** [`.github/workflows/prod-cicd-sec.yml`](.github/workflows/prod-cicd-sec.yml)
+## Pipeline Status
+
+- **Staging Deployment:** [View Status](https://github.com/fouadyasin01/platform-labs/actions/runs/40326220145)
+- **Production Deployment:** [View Status](https://github.com/fouadyasin01/platform-labs/actions/runs/40328385800)
+
+**Pipeline Configuration:** [`.github/workflows/prod-cicd-sec.yml`](https://github.com/fouadyasin01/platform-labs/blob/master/.github/workflows/prod-cicd-sec.yml)
 
 ## 1. CI/CD workflow overview
 
