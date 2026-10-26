@@ -71,9 +71,9 @@ This screenshot shows the **production load balancer DNS name** serving **“Fou
 
 The log explicitly records staging deployment jobs and the production deployment job as **completed with result: Succeeded** on 26 October 2026. This screenshot is evidence that those deployment jobs succeeded.
 
-## Security gates and assignment requirements
+## Security gates and  requirements
 
-The assignment requires the pipeline to block on:
+the pipeline to block on:
 
 - Lint or formatting errors.
 - Failed unit tests, with a minimum 70% coverage target.
