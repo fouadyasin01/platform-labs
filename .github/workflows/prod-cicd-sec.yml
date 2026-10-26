@@ -3,13 +3,15 @@ name: Production CI/CD Security
 on:
   push:
     branches:
-      - master
       - feature/production-cicd-security
     paths:
       - "prod-cicd-sec/**"
       - ".github/workflows/prod-cicd-sec.yml"
 
   pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - master
     paths:
       - "prod-cicd-sec/**"
       - ".github/workflows/prod-cicd-sec.yml"
@@ -23,6 +25,7 @@ concurrency:
 permissions:
   contents: read
   pull-requests: read
+  actions: read
   id-token: write
 
 env:
@@ -125,20 +128,38 @@ jobs:
               output.write("affected_services=" + affected_services + "\n")
 
   prepare:
-    name: Prepare image tag
     runs-on: ubuntu-latest
-
     outputs:
+      source_sha: ${{ steps.sha.outputs.source_sha }}
       short_sha: ${{ steps.sha.outputs.short_sha }}
 
     steps:
-      - name: Generate image tag
+      - name: Resolve image source commit
         id: sha
+        shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_ACTION: ${{ github.event.action }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           COMMIT_SHA: ${{ github.sha }}
-        run: echo "short_sha=${COMMIT_SHA:0:4}" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "pull_request" &&
+                "$PR_ACTION" == "closed" &&
+                "$PR_MERGED" == "true" ]]; then
+            SOURCE_SHA="$PR_HEAD_SHA"
+          else
+            SOURCE_SHA="$COMMIT_SHA"
+          fi
+
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SOURCE_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "Resolved source commit: $SOURCE_SHA"
 
   quality:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     name: Quality checks
     runs-on: ubuntu-latest
     needs: changes
@@ -284,6 +305,7 @@ jobs:
         run: pip-audit -r requirements.txt
 
   sast:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     name: Static application security testing
     runs-on: ubuntu-latest
 
@@ -401,10 +423,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Configure kubectl
-        run: |
-          aws eks update-kubeconfig \
-            --name "${{ vars.EKS_CLUSTER_NAME }}" \
-            --region "${{ vars.AWS_REGION }}"
+        run: aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION }}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -418,23 +437,63 @@ jobs:
 
 
   promote_production_images:
-    name: Promote images for production
+    name: Promote Production Images
     runs-on: ubuntu-latest
+
     needs:
       - prepare
       - changes
-      - deploy_staging
 
     if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/master' &&
-      needs.deploy_staging.result == 'success' &&
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
       needs.changes.outputs.affected_services != ''
 
     env:
       AFFECTED_SERVICES: ${{ needs.changes.outputs.affected_services }}
 
     steps:
+
+      - name: Verify successful staging deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Checking staging deployment for commit: $SOURCE_SHA"
+
+          RUN_IDS="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/prod-cicd-sec.yml/runs?head_sha=${SOURCE_SHA}&event=push&per_page=100" \
+            --jq '.workflow_runs[].id')"
+
+          if [[ -z "$RUN_IDS" ]]; then
+            echo "::error::No workflow runs found for commit ${SOURCE_SHA}"
+            exit 1
+          fi
+
+          STAGING_VERIFIED=false
+
+          while IFS= read -r RUN_ID; do
+            [[ -z "$RUN_ID" ]] && continue
+
+            STAGING_RESULT="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.name == "Deploy staging") | .conclusion][0] // empty')"
+
+            if [[ "$STAGING_RESULT" == "success" ]]; then
+              echo "Verified successful staging deployment in run ${RUN_ID}"
+              STAGING_VERIFIED=true
+              break
+            fi
+          done <<< "$RUN_IDS"
+
+          if [[ "$STAGING_VERIFIED" != "true" ]]; then
+            echo "::error::No successful staging deployment found for commit ${SOURCE_SHA}"
+            exit 1
+          fi
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -485,8 +544,9 @@ jobs:
       - promote_production_images
 
     if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/master' &&
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
       needs.promote_production_images.result == 'success' &&
       needs.changes.outputs.affected_services != ''
 
@@ -504,10 +564,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Configure kubectl
-        run: |
-          aws eks update-kubeconfig \\
-            --name "${{ vars.EKS_CLUSTER_NAME }}" \\
-            --region "${{ vars.AWS_REGION }}"
+        run: aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION }}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
