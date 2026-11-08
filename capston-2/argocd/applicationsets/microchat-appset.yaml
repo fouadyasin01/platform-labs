@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: microchat-appset
+  namespace: argocd
+spec:
+  generators:
+    - matrix:
+        generators:
+          # Environment dimension
+          - list:
+              elements:
+                - env: staging
+                  namespace: microchat-staging
+                  valuesFile: values-staging.yaml
+                  revision: feature/capston-2
+
+                - env: prod
+                  namespace: microchat-prod
+                  valuesFile: values-prod.yaml
+                  revision: feature/capston-2
+
+          # Workload dimension
+          - list:
+              elements:
+                - app: microchat
+                  chartPath: capston-2/helm/microchat
+                  wave: "1"
+
+  template:
+    metadata:
+      name: '{{app}}-{{env}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{wave}}'
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/fouadyasin01/platform-labs.git
+        targetRevision: '{{revision}}'
+        path: '{{chartPath}}'
+        helm:
+          releaseName: '{{app}}-{{env}}'
+          valueFiles:
+            - '{{valuesFile}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
