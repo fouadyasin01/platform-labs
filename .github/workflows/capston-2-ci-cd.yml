@@ -50,26 +50,168 @@ jobs:
           echo "WebSocket: ${{ steps.filter.outputs.websocket }}"
 
   frontend:
-    name: Frontend selected
+    name: Frontend - Lint, Test, Build & Scan
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Frontend changed"
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: capston-2/app/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: capston-2/app/frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: capston-2/app/frontend
+        run: npx prettier --check .
+
+      - name: Test
+        working-directory: capston-2/app/frontend
+        run: npm run test:coverage
+
+      - name: Dependency audit
+        working-directory: capston-2/app/frontend
+        run: npm audit --audit-level=high
+
+      - name: Build image
+        run: |
+          docker build \
+            -t vanbasten01/k8s-microchat-fd:ci-${GITHUB_SHA} \
+            capston-2/app/frontend
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: vanbasten01/k8s-microchat-fd:ci-${{ github.sha }}
+          scan-type: image
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image
+        run: docker push vanbasten01/k8s-microchat-fd:ci-${GITHUB_SHA}
 
   rest-api:
-    name: REST API selected
+    name: REST API - Lint, Test, Build & Scan
     needs: changes
-    if: needs.changes.outputs.rest_api == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.rest_api == 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "REST API changed"
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: capston-2/app/rest-api
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        working-directory: capston-2/app/rest-api
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        working-directory: capston-2/app/rest-api
+        run: pytest --cov=src --cov-report=term-missing --cov-fail-under=90
+
+      - name: Dependency audit
+        working-directory: capston-2/app/rest-api
+        run: pip-audit -r requirements.txt
+
+      - name: Build image
+        run: |
+          docker build \
+            -f capston-2/app/rest-api/Dockerfile \
+            -t vanbasten01/chat-rest-api:ci-${GITHUB_SHA} \
+            capston-2/app
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: vanbasten01/chat-rest-api:ci-${{ github.sha }}
+          scan-type: image
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image
+        run: docker push vanbasten01/chat-rest-api:ci-${GITHUB_SHA}
 
   websocket:
-    name: WebSocket selected
+    name: WebSocket - Lint, Test, Build & Scan
     needs: changes
-    if: needs.changes.outputs.websocket == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.websocket == 'true'
     runs-on: ubuntu-latest
     steps:
-      - run: echo "WebSocket changed"
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: capston-2/app/websocket
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        working-directory: capston-2/app/websocket
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        working-directory: capston-2/app/websocket
+        run: pytest --cov=src --cov-report=term-missing
+
+      - name: Dependency audit
+        working-directory: capston-2/app/websocket
+        run: pip-audit -r requirements.txt
+
+      - name: Build image
+        run: |
+          docker build \
+            -f capston-2/app/websocket/Dockerfile \
+            -t vanbasten01/chat-websocket:ci-${GITHUB_SHA} \
+            capston-2/app
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: vanbasten01/chat-websocket:ci-${{ github.sha }}
+          scan-type: image
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image
+        run: docker push vanbasten01/chat-websocket:ci-${GITHUB_SHA}
+
+
 
