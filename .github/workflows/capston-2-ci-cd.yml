@@ -57,6 +57,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set image tag
+        run: echo "IMAGE_TAG=ci-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -82,13 +85,13 @@ jobs:
       - name: Build image
         run: |
           docker build \
-            -t vanbasten01/k8s-microchat-fd:ci-${GITHUB_SHA} \
+            -t vanbasten01/k8s-microchat-fd:${{ env.IMAGE_TAG }} \
             capston-2/app/frontend
 
       - name: Trivy scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: vanbasten01/k8s-microchat-fd:ci-${{ github.sha }}
+          image-ref: vanbasten01/k8s-microchat-fd:${{ env.IMAGE_TAG }}
           scan-type: image
           severity: HIGH,CRITICAL
           exit-code: "1"
@@ -101,7 +104,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push image
-        run: docker push vanbasten01/k8s-microchat-fd:ci-${GITHUB_SHA}
+        run: docker push vanbasten01/k8s-microchat-fd:${{ env.IMAGE_TAG }}
 
   rest-api:
     name: REST API - Lint, Test, Build & Scan
@@ -110,6 +113,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=ci-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
@@ -137,13 +143,13 @@ jobs:
         run: |
           docker build \
             -f capston-2/app/rest-api/Dockerfile \
-            -t vanbasten01/chat-rest-api:ci-${GITHUB_SHA} \
+            -t vanbasten01/chat-rest-api:${{ env.IMAGE_TAG }} \
             capston-2/app
 
       - name: Trivy scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: vanbasten01/chat-rest-api:ci-${{ github.sha }}
+          image-ref: vanbasten01/chat-rest-api:${{ env.IMAGE_TAG }}
           scan-type: image
           severity: HIGH,CRITICAL
           exit-code: "1"
@@ -156,7 +162,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push image
-        run: docker push vanbasten01/chat-rest-api:ci-${GITHUB_SHA}
+        run: docker push vanbasten01/chat-rest-api:${{ env.IMAGE_TAG }}
 
   websocket:
     name: WebSocket - Lint, Test, Build & Scan
@@ -165,6 +171,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=ci-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
@@ -192,13 +201,13 @@ jobs:
         run: |
           docker build \
             -f capston-2/app/websocket/Dockerfile \
-            -t vanbasten01/chat-websocket:ci-${GITHUB_SHA} \
+            -t vanbasten01/chat-websocket:${{ env.IMAGE_TAG }} \
             capston-2/app
 
       - name: Trivy scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: vanbasten01/chat-websocket:ci-${{ github.sha }}
+          image-ref: vanbasten01/chat-websocket:${{ env.IMAGE_TAG }}
           scan-type: image
           severity: HIGH,CRITICAL
           exit-code: "1"
@@ -211,7 +220,83 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push image
-        run: docker push vanbasten01/chat-websocket:ci-${GITHUB_SHA}
+        run: docker push vanbasten01/chat-websocket:${{ env.IMAGE_TAG }}
 
 
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [changes, frontend, rest-api, websocket]
+    if: |
+      always() &&
+      needs.changes.result == 'success' &&
+      (needs.frontend.result == 'success' || needs.frontend.result == 'skipped') &&
+      (needs['rest-api'].result == 'success' || needs['rest-api'].result == 'skipped') &&
+      (needs.websocket.result == 'success' || needs.websocket.result == 'skipped') &&
+      (
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.rest_api == 'true' ||
+        needs.changes.outputs.websocket == 'true' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    environment: staging
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=ci-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
+
+      # UPDATE STAGING VALUES
+
+      - name: Update frontend staging image values
+        if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i '/^frontend:/,/^[^ ]/ s|tag:.*|tag: "'"${IMAGE_TAG}"'"|' \
+            capston-2/helm/microchat/values-staging.yaml
+
+      - name: Update REST API staging image values
+        if: needs.changes.outputs.rest_api == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i '/^restApi:/,/^[^ ]/ s|tag:.*|tag: "'"${IMAGE_TAG}"'"|' \
+            capston-2/helm/microchat/values-staging.yaml
+
+      - name: Update WebSocket staging image values
+        if: needs.changes.outputs.websocket == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i '/^websocket:/,/^[^ ]/ s|tag:.*|tag: "'"${IMAGE_TAG}"'"|' \
+            capston-2/helm/microchat/values-staging.yaml
+
+      - name: Commit GitOps changes
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+
+          git add capston-2/helm/microchat/values-staging.yaml
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MESSAGE="ci(gitops): update all microservice staging images"
+          else
+            SERVICES=""
+
+            [ "${{ needs.changes.outputs.frontend }}" = "true" ] && SERVICES="${SERVICES}frontend, "
+            [ "${{ needs.changes.outputs.rest_api }}" = "true" ] && SERVICES="${SERVICES}rest-api, "
+            [ "${{ needs.changes.outputs.websocket }}" = "true" ] && SERVICES="${SERVICES}websocket, "
+
+            SERVICES="${SERVICES%, }"
+            MESSAGE="ci(gitops): update ${SERVICES} staging image"
+          fi
+
+          if git diff --cached --quiet; then
+            echo "No GitOps changes to commit."
+            exit 0
+          fi
+
+          git commit -m "$MESSAGE"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
