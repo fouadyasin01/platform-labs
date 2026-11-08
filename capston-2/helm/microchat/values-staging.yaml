@@ -49,7 +49,7 @@ gateway:
 frontend:
   image:
     repository: vanbasten01/k8s-microchat-fd
-    tag: "ci-f740f948"
+    tag: "ci-e424f253"
 
 restApi:
   image:
