@@ -1,0 +1,52 @@
+# Node.js dependencies and caches
+node_modules/
+.npm/
+*.log
+
+# Test and coverage output
+coverage/
+.nyc_output/
+
+# Python bytecode and runtime caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+**/.venv/
+**/venv/
+**/env/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
