@@ -301,3 +301,71 @@ jobs:
 
           git commit -m "$MESSAGE"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+          
+  deploy-production:
+    name: Promote to Production
+    needs: [changes, deploy-staging]
+    if: needs.deploy-staging.result == 'success'
+    environment: production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=ci-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
+
+      # UPDATE PRODUCTION VALUES
+
+      - name: Update frontend production image values
+        if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i '/^frontend:/,/^[^ ]/ s|tag:.*|tag: "'"${IMAGE_TAG}"'"|' \
+            capston-2/helm/microchat/values-prod.yaml
+
+      - name: Update REST API production image values
+        if: needs.changes.outputs.rest_api == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i '/^restApi:/,/^[^ ]/ s|tag:.*|tag: "'"${IMAGE_TAG}"'"|' \
+            capston-2/helm/microchat/values-prod.yaml
+
+      - name: Update WebSocket production image values
+        if: needs.changes.outputs.websocket == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          sed -i '/^websocket:/,/^[^ ]/ s|tag:.*|tag: "'"${IMAGE_TAG}"'"|' \
+            capston-2/helm/microchat/values-prod.yaml
+
+      - name: Commit production promotion
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+
+          git add capston-2/helm/microchat/values-prod.yaml
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MESSAGE="ci(gitops): promote all microservices to production"
+          else
+            SERVICES=""
+
+            [ "${{ needs.changes.outputs.frontend }}" = "true" ] && SERVICES="${SERVICES}frontend, "
+            [ "${{ needs.changes.outputs.rest_api }}" = "true" ] && SERVICES="${SERVICES}rest-api, "
+            [ "${{ needs.changes.outputs.websocket }}" = "true" ] && SERVICES="${SERVICES}websocket, "
+
+            SERVICES="${SERVICES%, }"
+            MESSAGE="ci(gitops): promote ${SERVICES} to production"
+          fi
+
+          if git diff --cached --quiet; then
+            echo "No production changes to commit."
+            exit 0
+          fi
+
+          git commit -m "$MESSAGE"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
