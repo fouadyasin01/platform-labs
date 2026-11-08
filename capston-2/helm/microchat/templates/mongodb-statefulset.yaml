@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-mongodb
+  labels:
+    app.kubernetes.io/name: microchat
+    app.kubernetes.io/component: mongodb
+spec:
+  serviceName: {{ .Release.Name }}-mongodb
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: microchat
+      app.kubernetes.io/component: mongodb
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: microchat
+        app.kubernetes.io/component: mongodb
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: mongodb
+          image: {{ .Values.mongodb.image }}
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - SETUID
+                - SETGID
+                - DAC_OVERRIDE
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.auth.existingSecret }}
+                  key: {{ .Values.mongodb.auth.usernameKey }}
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mongodb.auth.existingSecret }}
+                  key: {{ .Values.mongodb.auth.passwordKey }}
+
+          ports:
+            - name: mongodb
+              containerPort: {{ .Values.mongodb.port }}
+              protocol: TCP
+
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - >-
+                  mongosh --quiet
+                  --username "$MONGO_INITDB_ROOT_USERNAME"
+                  --password "$MONGO_INITDB_ROOT_PASSWORD"
+                  --authenticationDatabase admin
+                  --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)'
+            failureThreshold: 30
+            periodSeconds: 10
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - >-
+                  mongosh --quiet
+                  --username "$MONGO_INITDB_ROOT_USERNAME"
+                  --password "$MONGO_INITDB_ROOT_PASSWORD"
+                  --authenticationDatabase admin
+                  --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)'
+            periodSeconds: 10
+            timeoutSeconds: 5
+
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - >-
+                  mongosh --quiet
+                  --username "$MONGO_INITDB_ROOT_USERNAME"
+                  --password "$MONGO_INITDB_ROOT_PASSWORD"
+                  --authenticationDatabase admin
+                  --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)'
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ .Values.mongodb.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.mongodb.persistence.size }}

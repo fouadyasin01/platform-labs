@@ -1,0 +1,39 @@
+
+{{- if .Values.autoscaling.restApi.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-rest-api
+  labels:
+    app.kubernetes.io/name: microchat
+    app.kubernetes.io/component: rest-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}-rest-api
+  minReplicas: {{ .Values.autoscaling.restApi.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.restApi.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.restApi.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      selectPolicy: Min
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      selectPolicy: Min
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+{{- end }}

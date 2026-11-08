@@ -1,0 +1,47 @@
+frontend:
+  replicaCount: 3
+
+restApi:
+  replicaCount: 3
+
+websocket:
+  replicaCount: 3
+
+mongodb:
+  persistence:
+    size: 20Gi
+    createStorageClass: false
+  auth:
+    existingSecretOnly: true
+
+redis:
+  auth:
+    existingSecretOnly: true
+
+autoscaling:
+  frontend:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  restApi:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  websocket:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+gateway:
+  enabled: false
+  name: microchat-prod
+  className: eg
+  listener:
+    name: http
+    port: 80
+    protocol: HTTP
+  httpRoute:
+    enabled: true

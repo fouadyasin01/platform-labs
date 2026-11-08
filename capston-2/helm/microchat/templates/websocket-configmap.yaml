@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-websocket-config
+data:
+  REDIS_HOST: "{{ .Release.Name }}-redis"
+  REDIS_PORT: "6379"
