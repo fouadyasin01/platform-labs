@@ -1,0 +1,75 @@
+name: Capston 2 CI/CD
+
+on:
+  push:
+    branches:
+      - feature/capston-2
+    paths:
+      - 'capston-2/app/frontend/**'
+      - 'capston-2/app/rest-api/**'
+      - 'capston-2/app/websocket/**'
+      - '.github/workflows/capston-2-ci-cd.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      rest_api: ${{ steps.filter.outputs.rest_api }}
+      websocket: ${{ steps.filter.outputs.websocket }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'capston-2/app/frontend/**'
+            rest_api:
+              - 'capston-2/app/rest-api/**'
+            websocket:
+              - 'capston-2/app/websocket/**'
+
+      - name: Display detected changes
+        run: |
+          echo "Frontend: ${{ steps.filter.outputs.frontend }}"
+          echo "REST API: ${{ steps.filter.outputs.rest_api }}"
+          echo "WebSocket: ${{ steps.filter.outputs.websocket }}"
+
+  frontend:
+    name: Frontend selected
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Frontend changed"
+
+  rest-api:
+    name: REST API selected
+    needs: changes
+    if: needs.changes.outputs.rest_api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "REST API changed"
+
+  websocket:
+    name: WebSocket selected
+    needs: changes
+    if: needs.changes.outputs.websocket == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "WebSocket changed"
+
