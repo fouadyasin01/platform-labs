@@ -49,14 +49,14 @@ gateway:
 frontend:
   image:
     repository: vanbasten01/k8s-microchat-fd
-    tag: "ci-614b0488"
+    tag: "ci-f740f948"
 
 restApi:
   image:
     repository: vanbasten01/chat-rest-api
-    tag: "ci-614b0488"
+    tag: "ci-f740f948"
 
 websocket:
   image:
     repository: vanbasten01/chat-websocket
-    tag: "ci-614b0488"
+    tag: "ci-f740f948"
