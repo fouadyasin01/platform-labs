@@ -45,3 +45,18 @@ gateway:
     protocol: HTTP
   httpRoute:
     enabled: true
+
+frontend:
+  image:
+    repository: vanbasten01/k8s-microchat-fd
+    tag: "1.0.1"
+
+restApi:
+  image:
+    repository: vanbasten01/chat-rest-api
+    tag: "1.0.2"
+
+websocket:
+  image:
+    repository: vanbasten01/chat-websocket
+    tag: "1.0.3"
