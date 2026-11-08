@@ -36,7 +36,7 @@ autoscaling:
     targetCPUUtilizationPercentage: 70
 
 gateway:
-  enabled: false
+  enabled: true
   name: microchat-prod
   className: eg
   listener:
