@@ -28,3 +28,19 @@ output "node_role_arn" {
   description = "IAM role ARN for worker nodes"
   value       = aws_iam_role.node.arn
 }
+
+
+output "loki_iam_role_arn" {
+  description = "IAM role ARN used by Loki through IRSA"
+  value       = aws_iam_role.loki.arn
+}
+
+output "loki_chunks_bucket" {
+  description = "S3 bucket for Loki chunks"
+  value       = aws_s3_bucket.loki["chunks"].bucket
+}
+
+output "loki_ruler_bucket" {
+  description = "S3 bucket for Loki ruler data"
+  value       = aws_s3_bucket.loki["ruler"].bucket
+}

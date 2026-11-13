@@ -53,3 +53,15 @@ output "eks_node_role_arn" {
   description = "IAM role ARN for EKS worker nodes"
   value       = module.eks.node_role_arn
 }
+
+output "loki_iam_role_arn" {
+  value = module.eks.loki_iam_role_arn
+}
+
+output "loki_chunks_bucket" {
+  value = module.eks.loki_chunks_bucket
+}
+
+output "loki_ruler_bucket" {
+  value = module.eks.loki_ruler_bucket
+}
