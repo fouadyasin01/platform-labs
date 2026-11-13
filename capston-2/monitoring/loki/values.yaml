@@ -31,6 +31,13 @@ loki:
     s3:
       region: us-east-1
 
+
+chunksCache:
+  enabled: true
+  replicas: 1
+  allocatedMemory: 265
+  allocatedCPU: 100m
+
 singleBinary:
   replicas: 1
 
@@ -43,10 +50,10 @@ singleBinary:
 
   resources:
     requests:
-      cpu: 200m
-      memory: 512Mi
+      cpu: 100m
+      memory: 256Mi
     limits:
-      memory: 1Gi
+      memory: 512Mi
 
 read:
   replicas: 0
