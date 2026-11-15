@@ -39,3 +39,4 @@ coverage/
 .ruff_cache/
 htmlcov/
 .coverage
+**/*.egg-info/
