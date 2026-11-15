@@ -1,12 +1,15 @@
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
-from sqlalchemy import select
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 
-from ai_sre.database import SessionLocal
+from ai_sre.database import get_db
 from ai_sre.models import Incident
+from ai_sre.schemas import AlertmanagerWebhook, IncidentStatusUpdate
 
 app = FastAPI(title="AI SRE Platform")
 
@@ -17,105 +20,112 @@ def health():
 
 
 @app.post("/webhooks/alertmanager")
-def receive_alert(payload: dict[str, Any]):
-    alerts = payload.get("alerts", [])
+def receive_alert(
+    payload: AlertmanagerWebhook,
+    db: Annotated[Session, Depends(get_db)],
+):
+    incidents_created = []
+    incidents_updated = []
+    unmatched_resolved = 0
 
-    if not isinstance(alerts, list):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid Alertmanager payload: alerts must be a list",
-        )
+    for alert in payload.alerts:
+        labels = alert.labels
+        annotations = alert.annotations
+        starts_at = alert.startsAt
 
-    created_incidents = []
+        values = {
+            "id": str(uuid4()),
+            "fingerprint": alert.fingerprint,
+            "alert_status": alert.status,
+            "incident_status": "open",
+            "alertname": labels.get("alertname", "Unknown"),
+            "severity": labels.get("severity", "unknown"),
+            "namespace": labels.get("namespace", "unknown"),
+            "summary": annotations.get("summary", ""),
+            "starts_at": starts_at,
+            "created_at": datetime.now(UTC),
+        }
 
-    with SessionLocal() as session:
-        for alert in alerts:
-            labels = alert.get("labels", {})
-            annotations = alert.get("annotations", {})
-
-            starts_at = alert.get("startsAt")
-
-            incident = Incident(
-                id=str(uuid4()),
-                alert_status=alert.get("status", "unknown"),
-                incident_status="open",
-                alertname=labels.get("alertname", "Unknown"),
-                severity=labels.get("severity", "unknown"),
-                namespace=labels.get("namespace", "unknown"),
-                summary=annotations.get("summary", ""),
-                starts_at=(
-                    datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
-                    if starts_at
-                    else None
-                ),
-                created_at=datetime.now(UTC),
+        if alert.status == "resolved":
+            result = db.execute(
+                update(Incident)
+                .where(
+                    Incident.fingerprint == alert.fingerprint,
+                    Incident.starts_at == starts_at,
+                )
+                .values(
+                    alert_status="resolved",
+                    alertname=values["alertname"],
+                    severity=values["severity"],
+                    namespace=values["namespace"],
+                    summary=values["summary"],
+                    updated_at=datetime.now(UTC),
+                )
+                .returning(Incident.id)
             )
 
-            session.add(incident)
-            created_incidents.append(incident)
+            updated_id = result.scalar_one_or_none()
 
-        session.commit()
+            if updated_id is not None:
+                incidents_updated.append(updated_id)
+            else:
+                unmatched_resolved += 1
 
-        for incident in created_incidents:
-            session.refresh(incident)
+            continue
 
-        return {
-            "status": "received",
-            "incidents_created": len(created_incidents),
-            "incidents": [
-                {
-                    "id": incident.id,
-                    "alert_status": incident.alert_status,
-                    "incident_status": incident.incident_status,
-                    "alertname": incident.alertname,
-                    "severity": incident.severity,
-                    "namespace": incident.namespace,
-                    "summary": incident.summary,
-                    "starts_at": incident.starts_at,
-                    "created_at": incident.created_at,
-                    "updated_at": incident.updated_at,
-                }
-                for incident in created_incidents
-            ],
-        }
+        statement = (
+            insert(Incident)
+            .values(**values)
+            .on_conflict_do_nothing(constraint="uq_incidents_fingerprint_starts_at")
+            .returning(Incident.id)
+        )
+
+        inserted_id = db.scalar(statement)
+
+        if inserted_id is not None:
+            incidents_created.append(inserted_id)
+        else:
+            result = db.execute(
+                update(Incident)
+                .where(
+                    Incident.fingerprint == alert.fingerprint,
+                    Incident.starts_at == starts_at,
+                )
+                .values(
+                    alert_status=alert.status,
+                    alertname=values["alertname"],
+                    severity=values["severity"],
+                    namespace=values["namespace"],
+                    summary=values["summary"],
+                    updated_at=datetime.now(UTC),
+                )
+                .returning(Incident.id)
+            )
+
+            updated_id = result.scalar_one_or_none()
+
+            if updated_id is not None:
+                incidents_updated.append(updated_id)
+
+    db.commit()
+
+    return {
+        "status": "received",
+        "incidents_created": len(incidents_created),
+        "incidents_updated": len(incidents_updated),
+        "unmatched_resolved": unmatched_resolved,
+        "incident_ids": incidents_created + incidents_updated,
+    }
 
 
 @app.get("/incidents")
-def list_incidents():
-    with SessionLocal() as session:
-        incidents = session.scalars(
-            select(Incident).order_by(Incident.created_at.desc())
-        ).all()
+def list_incidents(
+    db: Annotated[Session, Depends(get_db)],
+):
+    incidents = db.scalars(select(Incident).order_by(Incident.created_at.desc())).all()
 
-        return [
-            {
-                "id": incident.id,
-                "alert_status": incident.alert_status,
-                "incident_status": incident.incident_status,
-                "alertname": incident.alertname,
-                "severity": incident.severity,
-                "namespace": incident.namespace,
-                "summary": incident.summary,
-                "starts_at": incident.starts_at,
-                "created_at": incident.created_at,
-                "updated_at": incident.updated_at,
-            }
-            for incident in incidents
-        ]
-
-
-@app.get("/incidents/{incident_id}")
-def get_incident(incident_id: str):
-    with SessionLocal() as session:
-        incident = session.get(Incident, incident_id)
-
-        if incident is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Incident not found",
-            )
-
-        return {
+    return [
+        {
             "id": incident.id,
             "alert_status": incident.alert_status,
             "incident_status": incident.incident_status,
@@ -127,39 +137,61 @@ def get_incident(incident_id: str):
             "created_at": incident.created_at,
             "updated_at": incident.updated_at,
         }
+        for incident in incidents
+    ]
+
+
+@app.get("/incidents/{incident_id}")
+def get_incident(
+    incident_id: str,
+    db: Annotated[Session, Depends(get_db)],
+):
+    incident = db.get(Incident, incident_id)
+
+    if incident is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found",
+        )
+
+    return {
+        "id": incident.id,
+        "alert_status": incident.alert_status,
+        "incident_status": incident.incident_status,
+        "alertname": incident.alertname,
+        "severity": incident.severity,
+        "namespace": incident.namespace,
+        "summary": incident.summary,
+        "starts_at": incident.starts_at,
+        "created_at": incident.created_at,
+        "updated_at": incident.updated_at,
+    }
 
 
 @app.patch("/incidents/{incident_id}/status")
 def update_incident_status(
     incident_id: str,
-    payload: dict[str, str],
+    payload: IncidentStatusUpdate,
+    db: Annotated[Session, Depends(get_db)],
 ):
-    valid_statuses = {"open", "investigating", "resolved"}
-    new_status = payload.get("status")
+    new_status = payload.status
 
-    if new_status not in valid_statuses:
+    incident = db.get(Incident, incident_id)
+
+    if incident is None:
         raise HTTPException(
-            status_code=400,
-            detail="Invalid incident status",
+            status_code=404,
+            detail="Incident not found",
         )
 
-    with SessionLocal() as session:
-        incident = session.get(Incident, incident_id)
+    incident.incident_status = new_status
+    incident.updated_at = datetime.now(UTC)
 
-        if incident is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Incident not found",
-            )
+    db.commit()
+    db.refresh(incident)
 
-        incident.incident_status = new_status
-        incident.updated_at = datetime.now(UTC)
-
-        session.commit()
-        session.refresh(incident)
-
-        return {
-            "id": incident.id,
-            "incident_status": incident.incident_status,
-            "updated_at": incident.updated_at,
-        }
+    return {
+        "id": incident.id,
+        "incident_status": incident.incident_status,
+        "updated_at": incident.updated_at,
+    }
