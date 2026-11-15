@@ -8,6 +8,7 @@ from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ai_sre import models
 from ai_sre.database import Base
 
 config = context.config

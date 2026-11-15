@@ -130,7 +130,6 @@ def test_resolved_alert_updates_existing_incident(client):
 
     incident = incident_response.json()
 
-
     assert incident["alert_status"] == "resolved"
     assert incident["incident_status"] == "open"
     assert incident["summary"] == "High CPU usage recovered"

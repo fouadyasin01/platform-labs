@@ -1,3 +1,9 @@
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from ai_sre.models import Incident, Investigation
+
+
 def create_incident(client):
     payload = {
         "receiver": "ai-sre",
@@ -81,3 +87,57 @@ def test_update_nonexistent_incident(client):
     )
 
     assert response.status_code == 404
+
+
+def test_incident_can_have_multiple_investigations(db_session):
+    incident = Incident(
+        id=str(uuid4()),
+        fingerprint=str(uuid4()),
+        alert_status="firing",
+        incident_status="investigating",
+        alertname="HighCPUUsage",
+        severity="critical",
+        namespace="microchat-prod",
+        summary="High CPU usage detected",
+        starts_at=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+
+    investigation_1 = Investigation(
+        id=str(uuid4()),
+        status="completed",
+        findings={"observation": "CPU usage is above 90%"},
+        root_cause="Possible CPU-intensive workload",
+        confidence=0.65,
+    )
+
+    investigation_2 = Investigation(
+        id=str(uuid4()),
+        status="completed",
+        findings={"observation": "Excessive API requests detected"},
+        root_cause="Excessive incoming requests",
+        confidence=0.92,
+    )
+
+    incident.investigations = [investigation_1, investigation_2]
+
+    db_session.add(incident)
+    db_session.commit()
+
+    incident_id = incident.id
+
+    # Force SQLAlchemy to reload the relationship from the database.
+    db_session.expire(incident, ["investigations"])
+
+    saved_incident = db_session.get(Incident, incident_id)
+
+    assert saved_incident is not None
+    assert len(saved_incident.investigations) == 2
+
+    assert {
+        investigation.root_cause
+        for investigation in saved_incident.investigations
+    } == {
+        "Possible CPU-intensive workload",
+        "Excessive incoming requests",
+    }
