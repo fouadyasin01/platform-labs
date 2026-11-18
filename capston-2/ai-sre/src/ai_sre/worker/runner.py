@@ -5,16 +5,18 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session, sessionmaker
 
 from ai_sre.models import Investigation
+from ai_sre.schemas import InvestigationContext
 from ai_sre.worker.claims import claim_next_investigation
+from ai_sre.worker.context import build_investigation_context
 
-InvestigationProcessor = Callable[[Investigation], dict]
+InvestigationProcessor = Callable[[InvestigationContext], dict]
 
 
 def run_once(
     session_factory: sessionmaker[Session],
     processor: InvestigationProcessor,
 ) -> bool:
-    # 1. Claim the investigation using a short-lived DB session
+    # 1. Claim investigation and build context using a short-lived DB session
     with session_factory() as db:
         investigation = claim_next_investigation(db)
 
@@ -23,11 +25,13 @@ def run_once(
 
         investigation_id = investigation.id
 
-    # The session is now closed.
-    # The processor runs without holding a DB connection.
+        context = build_investigation_context(db, investigation_id)
+
+    # Database session is now closed.
+    # The processor receives a validated context, not an ORM object.
 
     try:
-        result = processor(investigation)
+        result = processor(context)
 
         # 2. Open a new session to persist successful results
         with session_factory() as db:

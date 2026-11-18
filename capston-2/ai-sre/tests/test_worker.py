@@ -129,7 +129,12 @@ def test_run_once_completes_investigation(db_session):
     db_session.add(incident)
     db_session.commit()
 
-    def fake_processor(_investigation):
+    def fake_processor(context):
+        assert context.investigation_id == investigation.id
+        assert context.incident.alertname == "HighCPUUsage"
+        assert context.incident.severity == "critical"
+        assert context.incident.namespace == "microchat-prod"
+
         return {
             "findings": {"cpu_usage": "95%"},
             "root_cause": "CPU saturation caused by excessive workload",
@@ -181,7 +186,7 @@ def test_run_once_marks_investigation_failed():
         session.add(incident)
         session.commit()
 
-        def failing_processor(_investigation):
+        def failing_processor(_context):
             raise RuntimeError("Prometheus connection failed")
 
         processed = run_once(TestingSessionLocal, failing_processor)
