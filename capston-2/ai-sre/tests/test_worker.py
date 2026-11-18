@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from conftest import TestingSessionLocal
 from sqlalchemy import select
+from sqlalchemy.orm import sessionmaker
 
 from ai_sre.models import Incident, Investigation
 from ai_sre.worker.claims import claim_next_investigation
@@ -136,7 +137,13 @@ def test_run_once_completes_investigation(db_session):
             "recommendation": "Scale the deployment",
         }
 
-    processed = run_once(db_session, fake_processor)
+    test_session_factory = sessionmaker(
+        bind=db_session.connection(),
+        autoflush=False,
+        autocommit=False,
+    )
+
+    processed = run_once(test_session_factory, fake_processor)
 
     db_session.refresh(investigation)
 
@@ -177,7 +184,7 @@ def test_run_once_marks_investigation_failed():
         def failing_processor(_investigation):
             raise RuntimeError("Prometheus connection failed")
 
-        processed = run_once(session, failing_processor)
+        processed = run_once(TestingSessionLocal, failing_processor)
 
         failed_investigation = session.get(Investigation, investigation_id)
 
