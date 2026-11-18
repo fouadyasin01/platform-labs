@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from ai_sre.models import Incident, Investigation
+from ai_sre.schemas import Evidence, InvestigationReport, RootCause
 from ai_sre.worker.claims import claim_next_investigation
 from ai_sre.worker.runner import run_once
 
@@ -135,12 +136,22 @@ def test_run_once_completes_investigation(db_session):
         assert context.incident.severity == "critical"
         assert context.incident.namespace == "microchat-prod"
 
-        return {
-            "findings": {"cpu_usage": "95%"},
-            "root_cause": "CPU saturation caused by excessive workload",
-            "confidence": 0.95,
-            "recommendation": "Scale the deployment",
-        }
+        return InvestigationReport(
+            summary="High CPU usage caused performance degradation.",
+            evidence=[
+                Evidence(
+                    source="prometheus",
+                    observation="CPU utilization reached 95%.",
+                    resource="deployment/microchat-api",
+                )
+            ],
+            root_cause=RootCause(
+                description="CPU saturation caused by excessive workload",
+                status="probable",
+                confidence=0.95,
+            ),
+            recommendation="Scale the deployment",
+        )
 
     test_session_factory = sessionmaker(
         bind=db_session.connection(),
@@ -154,7 +165,15 @@ def test_run_once_completes_investigation(db_session):
 
     assert processed is True
     assert investigation.status == "completed"
-    assert investigation.findings == {"cpu_usage": "95%"}
+    assert investigation.findings["summary"] == (
+        "High CPU usage caused performance degradation."
+    )
+    assert investigation.findings["evidence"][0]["source"] == "prometheus"
+    assert investigation.findings["evidence"][0]["observation"] == (
+        "CPU utilization reached 95%."
+    )
+    assert investigation.findings["root_cause"]["status"] == "probable"
+    assert investigation.findings["root_cause"]["confidence"] == 0.95
     assert investigation.root_cause == "CPU saturation caused by excessive workload"
     assert investigation.confidence == 0.95
     assert investigation.recommendation == "Scale the deployment"

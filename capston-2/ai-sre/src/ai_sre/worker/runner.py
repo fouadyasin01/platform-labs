@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session, sessionmaker
 
 from ai_sre.models import Investigation
-from ai_sre.schemas import InvestigationContext
+from ai_sre.schemas import InvestigationContext, InvestigationReport
 from ai_sre.worker.claims import claim_next_investigation
 from ai_sre.worker.context import build_investigation_context
 
-InvestigationProcessor = Callable[[InvestigationContext], dict]
+InvestigationProcessor = Callable[[InvestigationContext], InvestigationReport]
 
 
 def run_once(
@@ -40,10 +40,10 @@ def run_once(
             if investigation is None:
                 return True
 
-            investigation.findings = result.get("findings", {})
-            investigation.root_cause = result.get("root_cause")
-            investigation.confidence = result.get("confidence")
-            investigation.recommendation = result.get("recommendation")
+            investigation.findings = result.model_dump(mode="json")
+            investigation.root_cause = result.root_cause.description
+            investigation.confidence = result.root_cause.confidence
+            investigation.recommendation = result.recommendation
             investigation.status = "completed"
             investigation.completed_at = datetime.now(UTC)
 

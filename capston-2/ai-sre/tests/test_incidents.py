@@ -135,8 +135,7 @@ def test_incident_can_have_multiple_investigations(db_session):
     assert len(saved_incident.investigations) == 2
 
     assert {
-        investigation.root_cause
-        for investigation in saved_incident.investigations
+        investigation.root_cause for investigation in saved_incident.investigations
     } == {
         "Possible CPU-intensive workload",
         "Excessive incoming requests",
